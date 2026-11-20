@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Traçados de Caldeiraria</title>
+<style>
+:root{--bg:#f5f5f2;--fg:#1d1d1b;--card:#fff;--line:#c9c9c2;--acc:#b5540a;--mut:#666}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#171716;--fg:#ececea;--card:#22221f;--line:#4a4a45;--acc:#e0813a;--mut:#9a9a92}}
+:root[data-theme="dark"]{--bg:#171716;--fg:#ececea;--card:#22221f;--line:#4a4a45;--acc:#e0813a;--mut:#9a9a92}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif}
+header{padding:16px;font-weight:700;font-size:18px;border-bottom:1px solid var(--line)}
+nav{display:flex;gap:6px;padding:10px 16px;overflow-x:auto}
+nav button{flex:1;min-width:max-content;padding:10px 12px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;font-size:14px}
+nav button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+main{padding:0 16px 24px;max-width:720px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px}
+label{display:block;font-size:13px;color:var(--mut);margin-top:10px}
+input,select{width:100%;padding:10px;margin-top:4px;font-size:16px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.go{width:100%;margin-top:14px;padding:12px;font-size:16px;border:0;border-radius:8px;background:var(--acc);color:#fff;font-weight:600}
+.res{margin-top:14px;font-size:15px;line-height:1.6}
+.res b{color:var(--acc)}
+.res p{margin:6px 0}
+.viz{margin-top:12px;background:var(--bg);border-radius:8px;padding:6px}
+.viz svg{width:100%;height:auto;display:block}
+.viz line{stroke:var(--acc);stroke-width:1.2}
+.err{color:#c0392b;font-size:14px}
+.note{font-size:12px;color:var(--mut);margin-top:10px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#b5540a">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+<body>
+<header><a href="index.html" style="color:var(--acc);text-decoration:none">&larr; Menu</a> &nbsp; Cones</header>
+<nav><button data-t="con" class="on" onclick="show('con')">Cone</button><button data-t="exc" onclick="show('exc')">Cone excêntrico</button><button data-t="cha" onclick="show('cha')">Chapéu chinês</button></nav>
+<div id="arOverlay" style="position:fixed;left:0;right:0;top:0;padding:12px;z-index:9999;pointer-events:none;display:none">
+  <button onclick="fecharRA()" style="pointer-events:auto;padding:10px 16px;border:0;border-radius:8px;background:#b5540a;color:#fff;font-size:15px">Fechar RA</button>
+  <div style="pointer-events:none;color:#fff;font-size:13px;margin-top:6px;text-shadow:0 1px 3px #000">Mire no chão, toque na tela para posicionar a peça.</div>
+</div>
+<main>
+<section id="con" hidden>
+  <div class="card">
+    <h3 style="margin:0">Cone / tronco de cone</h3>
+    <label>Diâmetro maior D1 (mm)<input id="kD1" type="number" value="300"></label>
+    <label>Diâmetro menor D2 (mm, 0 = cone pleno)<input id="kD2" type="number" value="120"></label>
+    <label>O diâmetro informado é<select id="kTipo"><option value="ext">externo</option><option value="int">interno</option><option value="med">linha média</option></select></label>
+    <label>Espessura t (mm)<input id="kT" type="number" value="6"></label>
+    <label>Altura H (mm)<input id="kH" type="number" value="250"></label>
+    <button class="go" onclick="calcCone()">Calcular</button>
+    <div id="kOut" class="res"></div>
+    <button class="go" onclick="v3('con')">Ver objeto em 3D</button>
+    <button class="go" onclick="verEmRA()">Ver em realidade aumentada (Android)</button>
+    <div id="kAR" class="note"></div>
+    <div id="kView" class="viz" style="height:340px;padding:0;overflow:hidden"></div>
+  </div>
+</section>
+<section id="exc" hidden>
+  <div class="card">
+    <h3 style="margin:0">Cone excêntrico (geratriz do topo reta)</h3>
+    <label>Diâmetro maior D1 (mm)<input id="eD1" type="number" value="300"></label>
+    <label>Diâmetro menor D2 (mm)<input id="eD2" type="number" value="150"></label>
+    <label>Altura H (mm)<input id="eH" type="number" value="250"></label>
+    <label>O diâmetro informado é<select id="eTipo"><option value="ext">externo</option><option value="int">interno</option><option value="med">linha média</option></select></label>
+    <label>Espessura t (mm)<input id="eT" type="number" value="6"></label>
+    <label>Divisões do círculo (múltiplo de 4 recomendado)<input id="eN" type="number" value="24"></label>
+    <button class="go" onclick="calcExc()">Calcular</button>
+    <div id="eOut" class="res"></div>
+    <button class="go" onclick="v3('exc')">Ver objeto em 3D</button>
+    <div id="eView" class="viz" style="height:340px;padding:0;overflow:hidden"></div>
+    <p class="note">Arraste na tela para girar a peça.</p>
+  </div>
+</section>
+<section id="cha" hidden>
+  <div class="card">
+    <h3 style="margin:0">Chapéu chinês (tronco de cone com saia)</h3>
+    <label>Diâmetro da saia D1 (mm)<input id="hD1" type="number" value="300"></label>
+    <label>Diâmetro do topo D2 (mm)<input id="hD2" type="number" value="120"></label>
+    <label>Altura do cone H (mm)<input id="hH" type="number" value="250"></label>
+    <label>Altura da saia cilíndrica S (mm, 0 = sem saia)<input id="hS" type="number" value="100"></label>
+    <label>O diâmetro informado é<select id="hTipo"><option value="ext">externo</option><option value="int">interno</option><option value="med">linha média</option></select></label>
+    <label>Espessura t (mm)<input id="hT" type="number" value="6"></label>
+    <button class="go" onclick="calcCha()">Calcular</button>
+    <div id="hOut" class="res"></div>
+    <button class="go" onclick="v3('cha')">Ver objeto em 3D</button>
+    <div id="hView" class="viz" style="height:340px;padding:0;overflow:hidden"></div>
+  </div>
+</section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const v = id => parseFloat($(id).value);
+const err = msg => `<span class="err">${msg}</span>`;
+
+// Converte o diâmetro informado para a linha neutra (média) da chapa
+function dmed(D, t, tipo){
+  if (tipo === 'int') return D + t;   // medida interna: somar espessura
+  if (tipo === 'med') return D;       // já é linha média
+  return D - t;                       // medida externa (padrão): subtrair espessura
+}
+
+function show(t){
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('section').forEach(s => s.hidden = s.id !== t);
+}
+
+// Ajusta pontos (mundo) a uma área de desenho (SVG), invertendo o eixo y
+function fit(xs, ys, W, H){
+  const minx = Math.min(...xs), maxx = Math.max(...xs);
+  const miny = Math.min(...ys), maxy = Math.max(...ys);
+  const s = Math.min((W - 40) / ((maxx - minx) || 1), (H - 40) / ((maxy - miny) || 1));
+  return { f: (x, y) => [20 + (x - minx) * s, H - 20 - (y - miny) * s] };
+}
+
+// Planificação de cilindro cortado com inclinação beta (°, a partir da perpendicular)
+function profileSvg(D, beta, n){
+  const t = Math.tan(beta * Math.PI / 180);
+  const xs = [], ys = [];
+  for (let k = 0; k <= n; k++){
+    const f = 2 * Math.PI * k / n;
+    xs.push(D / 2 * f);
+    ys.push(D / 2 * t * Math.cos(f));
+  }
+  const g = fit(xs, ys, 560, 200);
+  const pts = xs.map((x, i) => g.f(x, ys[i]).map(c => c.toFixed(1)).join(',')).join(' ');
+  const delta = D*Math.abs(t);
+  return `<svg viewBox="0 0 560 220"><polyline points="${pts}" fill="none" style="stroke:var(--acc);stroke-width:2"/>
+    <text x="20" y="200" style="${LBL}">0°</text>
+    <text x="280" y="200" text-anchor="middle" style="${LBL}">180°</text>
+    <text x="540" y="200" text-anchor="end" style="${LBL}">360°</text>
+    <text x="280" y="216" text-anchor="middle" style="${LBL}">Desenvolvimento = πD = ${(Math.PI*D).toFixed(1)} mm · Δ altura = ${delta.toFixed(1)} mm</text></svg>`;
+}
+
+// Estilo das legendas dentro das figuras (com contorno para ler sobre as linhas)
+const LBL = 'font-size:12px;fill:var(--fg);paint-order:stroke;stroke:var(--bg);stroke-width:4px;';
+
+// Planificação de cone (setor) com medidas e ângulo nomeados
+function sectorSvg(S1, S2, s, th, D1, D2){
+  const k = 150/S1, r1 = S1*k, r2 = S2*k, cx = 200, cy = 250;
+  const P = (r, a) => [cx + r*Math.sin(a), cy - r*Math.cos(a)];
+  const f = p => p[0].toFixed(1) + ',' + p[1].toFixed(1);
+  const a1 = -th/2*Math.PI/180, a2 = th/2*Math.PI/180, large = th > 180 ? 1 : 0;
+  const d = `M${f(P(r1,a1))} A${r1} ${r1} 0 ${large} 1 ${f(P(r1,a2))} L${f(P(r2,a2))} A${r2} ${r2} 0 ${large} 0 ${f(P(r2,a1))} Z`;
+  const m = P((r1+r2)/2, a2);
+  return `<svg viewBox="0 0 400 400">
+    <path d="${d}" style="fill:var(--card);stroke:var(--acc);stroke-width:2"/>
+    <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${(cy-r1).toFixed(1)}" style="stroke:var(--fg);stroke-width:1;stroke-dasharray:4 4"/>
+    <circle cx="${cx}" cy="${cy}" r="3" style="fill:var(--acc)"/>
+    <text x="200" y="84" text-anchor="middle" style="${LBL}">Arco externo = πD1 = ${(Math.PI*D1).toFixed(1)} mm</text>
+    <text x="200" y="180" text-anchor="middle" style="${LBL}">Arco menor = πD2 = ${(Math.PI*D2).toFixed(1)} mm</text>
+    <text x="206" y="150" style="${LBL}">S1 = ${S1.toFixed(1)} mm</text>
+    <text x="206" y="232" style="${LBL}">S2 = ${S2.toFixed(1)} mm</text>
+    <text x="${(m[0]+12).toFixed(1)}" y="${m[1].toFixed(1)}" style="${LBL}">s = ${s.toFixed(1)} mm</text>
+    <text x="250" y="262" style="${LBL}">θ = ${th.toFixed(2)}°</text>
+    <text x="200" y="272" text-anchor="middle" style="${LBL}">Vértice</text>
+  </svg>`;
+}
+
+// Saia cilíndrica desenvolvida (retângulo)
+function skirtSvg(L, S){
+  const sc = Math.min(330/L, 200/S), w = L*sc, h = S*sc, x0 = (400-w)/2, y0 = 120;
+  return `<svg viewBox="0 0 400 400">
+    <rect x="${x0.toFixed(1)}" y="${y0}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" style="fill:var(--card);stroke:var(--acc);stroke-width:2"/>
+    <text x="200" y="${y0-14}" text-anchor="middle" style="${LBL}">Saia desenvolvida (retângulo)</text>
+    <text x="200" y="${(y0+h/2+4).toFixed(1)}" text-anchor="middle" style="${LBL}">Altura S = ${S.toFixed(1)} mm</text>
+    <text x="200" y="${(y0+h+24).toFixed(1)}" text-anchor="middle" style="${LBL}">Comprimento = πD1 = ${L.toFixed(1)} mm</text>
+  </svg>`;
+}
+
+function calcCil(){
+  const D = dmed(v('cD'), v('cT'), $('cTipo').value), H = v('cH'), a = v('cA'), n = Math.round(v('cN'));
+  if (!(D > 0) || !(H > 0) || !(n >= 4)) { $('cOut').innerHTML = err('Informe D > 0, H > 0 e divisões ≥ 4.'); return; }
+  const delta = D * Math.abs(Math.tan(a * Math.PI / 180));
+  $('cOut').innerHTML = `
+    <p>Diâmetro da linha neutra usado: <b>${D.toFixed(1)} mm</b></p>
+    <p>Comprimento da planificação (circunferência): <b>${(Math.PI * D).toFixed(1)} mm</b></p>
+    <p>Diferença entre a maior e a menor altura do corte: <b>${delta.toFixed(1)} mm</b></p>
+    <p>Lado mais alto: H + ${(delta / 2).toFixed(1)} mm · Lado mais baixo: H − ${(delta / 2).toFixed(1)} mm</p>
+    <div class="viz">${profileSvg(D, a, n)}</div>
+    <p class="note">Perfil de corte na planificação: marque o comprimento no eixo x e as alturas no eixo y.</p>`;
+}
+
+function calcCone(){
+  const t = v('kT'), tp = $('kTipo').value;
+  const D1 = dmed(v('kD1'), t, tp), D2 = Math.max(0, dmed(v('kD2'), t, tp)), H = v('kH');
+  if (!(D1 > D2) || !(D2 >= 0) || !(H > 0)) { $('kOut').innerHTML = err('Use D1 > D2 ≥ 0 e H > 0.'); return; }
+  const s = Math.hypot(H, (D1 - D2) / 2);        // geratriz do tronco
+  const S1 = s * D1 / (D1 - D2);                 // do vértice à borda maior
+  const S2 = s * D2 / (D1 - D2);                 // do vértice à borda menor
+  const th = 180 * D1 / S1;                      // ângulo do setor (°)
+  const k = 180 / S1, r1 = S1 * k, r2 = S2 * k, cx = 200, cy = 200;
+  const P = (r, a) => [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+  const a1 = -th / 2 * Math.PI / 180, a2 = th / 2 * Math.PI / 180;
+  const large = th > 180 ? 1 : 0;
+  const d = `M${P(r1, a1)} A${r1} ${r1} 0 ${large} 1 ${P(r1, a2)} L${P(r2, a2)} A${r2} ${r2} 0 ${large} 0 ${P(r2, a1)} Z`;
+  $('kOut').innerHTML = `
+    <p>Geratriz do tronco: <b>${s.toFixed(1)} mm</b></p>
+    <p>Raio do vértice até a borda maior: <b>${S1.toFixed(1)} mm</b></p>
+    <p>Raio do vértice até a borda menor: <b>${S2.toFixed(1)} mm</b></p>
+    <p>Ângulo do setor: <b>${th.toFixed(2)}°</b></p>
+    <p>Comprimento do arco externo: π·D1 = <b>${(Math.PI * D1).toFixed(1)} mm</b></p>
+    <div class="viz">${sectorSvg(S1, S2, s, th, D1, D2)}</div>
+    <p class="note">Marque os raios a partir de um ponto (vértice) e trace o setor com o ângulo indicado.</p>`;
+}
+
+function calcCot(){
+  const D = dmed(v('oD'), v('oT'), $('oTipo').value), al = v('oA'), k = Math.round(v('oK'));
+  if (!(D > 0) || !(al > 0) || !(k >= 2)) { $('oOut').innerHTML = err('Informe D > 0, ângulo > 0 e pelo menos 2 peças.'); return; }
+  const d = al / (k - 1);      // deflexão por junta
+  const beta = d / 2;          // corte em cada extremidade (em relação à perpendicular)
+  $('oOut').innerHTML = `
+    <p>Deflexão por junta: <b>${d.toFixed(2)}°</b></p>
+    <p>Ângulo de corte em cada extremidade: <b>${beta.toFixed(2)}°</b></p>
+    <p>Número de cortes: <b>${2 * (k - 1)}</b> (${k - 2 > 0 ? (k - 2) + ' peças centrais cortadas nas duas pontas' : 'sem peças centrais'}${k >= 2 ? ', 2 peças de ponta cortadas numa ponta' : ''})</p>
+    <div class="viz">${profileSvg(D, beta, 24)}</div>
+    <p class="note">O perfil mostra a planificação do corte de uma extremidade. Confira o ângulo com o gabarito antes de cortar.</p>`;
+}
+
+// Ponto na borda do retângulo (centrado na origem), contado a partir do canto inferior esquerdo
+function rectAt(t, W, H){
+  const hw = W / 2, hh = H / 2;
+  const segs = [
+    [[-hw, -hh], [hw, -hh], W], [[hw, -hh], [hw, hh], H],
+    [[hw, hh], [-hw, hh], W], [[-hw, hh], [-hw, -hh], H]
+  ];
+  let s = t;
+  for (const [A, B, L] of segs){
+    if (s <= L) { const f = s / L; return [A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f]; }
+    s -= L;
+  }
+  return [-hw, -hh];
+}
+
+// Triangulação em faixa: alterna pontos do retângulo (z=0) e do círculo (z=h)
+function calcTr(){
+  const t = v('tT');
+  const DX = v('tX') || 0, DY = v('tY') || 0;
+  const W = v('tW') - t, H = v('tH') - t, D = v('tD') - t, h = v('tZ'), n = Math.round(v('tN'));
+  if (!(W > 0) || !(H > 0) || !(D > 0) || !(h > 0) || !(n >= 4)) { $('tOut').innerHTML = err('Informe todas as medidas > 0 e divisões ≥ 4.'); return; }
+  const per = 2 * (W + H), P = [], Q = [];
+  for (let i = 0; i < n; i++){
+    const p = rectAt(per * i / n, W, H);
+    P.push([p[0], p[1], 0]);
+    const a = 2 * Math.PI * i / n;
+    Q.push([D / 2 * Math.cos(a) + DX, D / 2 * Math.sin(a) + DY, h]);
+  }
+  const V = [];
+  for (let i = 0; i < n; i++) V.push(P[i], Q[i]);
+  V.push(P[0]);                      // fecha o contorno
+  const M = V.length;
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  const X = [0, dist(V[0], V[1])], Y = [0, 0];
+  for (let k = 2; k < M; k++){
+    const A = k - 2, B = k - 1;
+    const da = dist(V[A], V[k]), db = dist(V[B], V[k]);
+    const dx = X[B] - X[A], dy = Y[B] - Y[A], d = Math.hypot(dx, dy) || 1e-9;
+    const x = (da * da - db * db + d * d) / (2 * d);
+    const hh = Math.sqrt(Math.max(0, da * da - x * x));
+    const ux = dx / d, uy = dy / d, nx = -uy, ny = ux;
+    let side = 1;
+    if (k >= 3){
+      const cross = dx * (Y[k - 3] - Y[A]) - dy * (X[k - 3] - X[A]);
+      side = cross > 0 ? -1 : 1;     // fica do lado oposto ao triângulo anterior
+    }
+    X.push(X[A] + ux * x + nx * hh * side);
+    Y.push(Y[A] + uy * x + ny * hh * side);
+  }
+  const closure = Math.hypot(X[M - 1] - X[0], Y[M - 1] - Y[0]);
+  const g = fit(X, Y, 560, 360);
+  let lines = '';
+  for (let k = 0; k < M; k++){
+    for (const j of [k + 1, k + 2]){
+      if (j < M){
+        const [x1, y1] = g.f(X[k], Y[k]), [x2, y2] = g.f(X[j], Y[j]);
+        lines += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+      }
+    }
+  }
+  const w = Math.max(...X) - Math.min(...X), hgt = Math.max(...Y) - Math.min(...Y);
+  $('tOut').innerHTML = `
+    <p>Dimensões aproximadas da planificação: <b>${w.toFixed(1)} × ${hgt.toFixed(1)} mm</b></p>
+    <p>Erro de fechamento: <b>${closure.toFixed(1)} mm</b></p>
+    <div class="viz"><svg viewBox="0 0 560 360">${lines}</svg></div>
+    <p class="note">Medidas W, H e D tratadas como externas: o cálculo usa a linha neutra (medida − t). Método de triangulação aproximado. Quanto menor o erro de fechamento, melhor; se estiver alto, aumente as divisões. Valide com um gabarito antes de cortar a chapa.</p>`;
+}
+// Desenvolvimento de faixa de triângulos (mesmo método da transição)
+function stripDev(V){
+  const M = V.length, dist = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
+  const X = [0, dist(V[0], V[1])], Y = [0, 0];
+  for (let k = 2; k < M; k++){
+    const A = k - 2, B = k - 1;
+    const da = dist(V[A], V[k]), db = dist(V[B], V[k]);
+    const dx = X[B] - X[A], dy = Y[B] - Y[A], d = Math.hypot(dx, dy) || 1e-9;
+    const x = (da*da - db*db + d*d) / (2*d);
+    const hh = Math.sqrt(Math.max(0, da*da - x*x));
+    const ux = dx / d, uy = dy / d;
+    let side = 1;
+    if (k >= 3){
+      const cross = dx * (Y[k-3] - Y[A]) - dy * (X[k-3] - X[A]);
+      side = cross > 0 ? -1 : 1;
+    }
+    X.push(X[A] + ux*x - uy*hh*side);
+    Y.push(Y[A] + uy*x + ux*hh*side);
+  }
+  return {X, Y};
+}
+
+// Cone excêntrico: as duas bases são homotetias de centro no vértice V,
+// e a geratriz do topo (tangente) é reta e passa por V
+function calcExc(){
+  const t = v('eT'), tp = $('eTipo').value;
+  const D1 = dmed(v('eD1'), t, tp), D2 = dmed(v('eD2'), t, tp), H = v('eH'), n = Math.round(v('eN'));
+  if (!(D1 > D2 && D2 > 0 && H > 0 && n >= 8)) { $('eOut').innerHTML = err('Use D1 > D2 > 0, H > 0 e divisões ≥ 8.'); return; }
+  const R = D1/2, r = D2/2, e = R - r, k = r/R;
+  const V = [0, R, H*R/e];                  // vértice do cone
+  const P = [], Q = [];
+  for (let i = 0; i < n; i++){
+    const a = 2*Math.PI*i/n;
+    const p = [R*Math.cos(a), R*Math.sin(a), 0];
+    P.push(p);
+    Q.push(p.map((c, j) => V[j] + k*(c - V[j])));
+  }
+  const gen = P.map((p, i) => Math.hypot(p[0]-Q[i][0], p[1]-Q[i][1], p[2]-Q[i][2]));
+  const seq = [];
+  for (let i = 0; i < n; i++) seq.push(P[i], Q[i]);
+  seq.push(P[0]);
+  const {X, Y} = stripDev(seq);
+  const M = seq.length;
+  const closure = Math.hypot(X[M-1] - X[0], Y[M-1] - Y[0]);
+  const g = fit(X, Y, 560, 360);
+  let lines = '';
+  for (let i = 0; i < M; i++){
+    for (const j of [i + 1, i + 2]){
+      if (j < M){
+        const [x1, y1] = g.f(X[i], Y[i]), [x2, y2] = g.f(X[j], Y[j]);
+        lines += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+      }
+    }
+  }
+  const w = Math.max(...X) - Math.min(...X), hgt = Math.max(...Y) - Math.min(...Y);
+  $('eOut').innerHTML = `
+    <p>Linha neutra: D1 = <b>${D1.toFixed(1)} mm</b> · D2 = <b>${D2.toFixed(1)} mm</b></p>
+    <p>Desvio dos eixos (excentricidade): <b>${e.toFixed(1)} mm</b></p>
+    <p>Geratriz do topo (reta, menor): <b>${Math.min(...gen).toFixed(1)} mm</b></p>
+    <p>Geratriz do fundo (maior): <b>${Math.max(...gen).toFixed(1)} mm</b></p>
+    <p>Dimensões aproximadas da planificação: <b>${w.toFixed(1)} × ${hgt.toFixed(1)} mm</b></p>
+    <p>Erro de fechamento: <b>${closure.toFixed(1)} mm</b></p>
+    <div class="viz"><svg viewBox="0 0 560 360">${lines}</svg></div>
+    <p class="note">Contorno de corte: una os pontos da base maior (P) e da menor (Q) na ordem das linhas. A geratriz do topo é a reta de referência. Aumente as divisões se o erro de fechamento for alto. Valide com gabarito antes de cortar.</p>`;
+}
+
+// Visualização 3D do cone excêntrico (mesmas medidas da linha neutra)
+let R3 = null, S3 = null, C3 = null, G3 = null;
+function view3d(){
+  if (typeof THREE === 'undefined') { $('eOut').innerHTML = err('Biblioteca 3D indisponível neste ambiente.'); return; }
+  const t = v('eT'), tp = $('eTipo').value;
+  const D1 = dmed(v('eD1'), t, tp), D2 = dmed(v('eD2'), t, tp), H = v('eH');
+  const n = Math.max(8, Math.round(v('eN')));
+  if (!(D1 > D2 && D2 > 0 && H > 0)) { $('eOut').innerHTML = err('Corrija as medidas antes de ver em 3D.'); return; }
+  const R = D1/2, r = D2/2, e = R - r;
+
+  // Anéis: P na base maior (z=0), Q na base menor (z=H, deslocada em e)
+  const P = [], Q = [];
+  for (let i = 0; i < n; i++){
+    const a = 2*Math.PI*i/n;
+    P.push([R*Math.cos(a), R*Math.sin(a), 0]);
+    Q.push([r*Math.cos(a), e + r*Math.sin(a), H]);
+  }
+  const C1 = [0, 0, 0], C2 = [0, e, H];
+  const tri = [];
+  const add = (...pts) => pts.forEach(p => tri.push(p[0], p[1], p[2]));
+  for (let i = 0; i < n; i++){
+    const j = (i + 1) % n;
+    add(P[i], Q[i], P[j]);            // superfície lateral
+    add(P[j], Q[i], Q[j]);
+    add(C1, P[j], P[i]);              // base maior
+    add(C2, Q[i], Q[j]);              // base menor
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(tri, 3));
+  geo.computeVertexNormals();
+
+  if (!R3){
+    R3 = new THREE.WebGLRenderer({antialias: true, alpha: true});
+    R3.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    S3 = new THREE.Scene();
+    C3 = new THREE.PerspectiveCamera(40, 1, 1, 100000);
+    C3.up.set(0, 0, 1);
+    S3.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const dl = new THREE.DirectionalLight(0xffffff, 0.9);
+    dl.position.set(1, -1.5, 2);
+    S3.add(dl);
+    G3 = new THREE.Group();
+    S3.add(G3);
+    const el = R3.domElement;
+    el.style.touchAction = 'none';
+    el.style.width = '100%';
+    el.style.height = '100%';
+    let drag = false, lx = 0, ly = 0;
+    el.onpointerdown = ev => { drag = true; lx = ev.clientX; ly = ev.clientY; el.setPointerCapture(ev.pointerId); };
+    el.onpointermove = ev => {
+      if (!drag) return;
+      G3.rotation.z += (ev.clientX - lx) * 0.01;
+      G3.rotation.x = Math.max(-1.5, Math.min(1.5, G3.rotation.x + (ev.clientY - ly) * 0.01));
+      lx = ev.clientX; ly = ev.clientY;
+    };
+    el.onpointerup = el.onpointercancel = () => { drag = false; };
+    const loop = () => { requestAnimationFrame(loop); R3.render(S3, C3); };
+    loop();
+  }
+  const view = $('eView');
+  if (!R3.domElement.parentNode || R3.domElement.parentNode !== view) { view.innerHTML = ''; view.appendChild(R3.domElement); }
+  const w = view.clientWidth || 360, h = 340;
+  R3.setSize(w, h);
+  C3.aspect = w / h;
+  C3.updateProjectionMatrix();
+
+  while (G3.children.length){ const c = G3.children[0]; G3.remove(c); c.geometry.dispose(); }
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    color: 0xb5540a, metalness: 0.2, roughness: 0.45, side: THREE.DoubleSide, flatShading: true
+  }));
+  mesh.position.set(0, -e/2, -H/2);   // centraliza a peça na origem
+  G3.add(mesh);
+  const size = Math.max(D1, H);
+  C3.position.set(0, -size * 1.8, size * 0.7);
+  C3.lookAt(0, 0, 0);
+}
+
+// ===== Visualização 3D genérica para todos os traçados =====
+const VIEWS = {};
+const CORES = ['#b5540a', '#2a7fbf', '#3a9b5c', '#c94f7c', '#8a6fd1', '#d9a31f'];
+const vadd = (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
+const vsc = (a, s) => [a[0]*s, a[1]*s, a[2]*s];
+const vnorm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
+const vcross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const tri = (T, a, b, c) => { T.push(a[0],a[1],a[2], b[0],b[1],b[2], c[0],c[1],c[2]); };
+const grupos = nomes => nomes.map(nome => ({ nome, T: [] }));
+
+function mount3d(divId, G){
+  const div = $(divId);
+  if (typeof THREE === 'undefined'){ div.innerHTML = err('Biblioteca 3D indisponível neste ambiente.'); return; }
+  if (VIEWS[divId]){ VIEWS[divId].alive = false; VIEWS[divId].r.forceContextLoss(); }
+  G = G.filter(g => g.T.length);
+  let mnx=Infinity,mny=Infinity,mnz=Infinity,mxx=-Infinity,mxy=-Infinity,mxz=-Infinity;
+  for (const g of G){
+    for (let i = 0; i < g.T.length; i += 3){
+      const x = g.T[i], y = g.T[i+1], z = g.T[i+2];
+      mnx=Math.min(mnx,x); mxx=Math.max(mxx,x);
+      mny=Math.min(mny,y); mxy=Math.max(mxy,y);
+      mnz=Math.min(mnz,z); mxz=Math.max(mxz,z);
+    }
+  }
+  const cx=(mnx+mxx)/2, cy=(mny+mxy)/2, cz=(mnz+mxz)/2;
+  const size = Math.max(mxx-mnx, mxy-mny, mxz-mnz) || 1;
+  const w = div.clientWidth || 340, h = 260;
+  const r = new THREE.WebGLRenderer({antialias: true, alpha: true});
+  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  r.setSize(w, h);
+  const el = r.domElement;
+  el.style.width = '100%'; el.style.height = h + 'px'; el.style.display = 'block'; el.style.touchAction = 'none';
+  div.innerHTML = '';
+  div.style.height = 'auto';
+  div.appendChild(el);
+
+  const leg = document.createElement('div');
+  leg.style.cssText = 'padding:8px 10px;font-size:13px;line-height:1.9;color:var(--fg)';
+  leg.innerHTML = G.map((g, i) => `<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${CORES[i%CORES.length]};margin-right:6px;vertical-align:middle"></span>${g.nome}`).join('<br>');
+  div.appendChild(leg);
+
+  const sc = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(40, w/h, 0.1, size*100);
+  cam.up.set(0, 0, 1);
+  cam.position.set(0, -size*1.8, size*0.9);
+  cam.lookAt(0, 0, 0);
+  sc.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.9);
+  dl.position.set(1, -1.5, 2);
+  sc.add(dl);
+
+  const grp = new THREE.Group();
+  sc.add(grp);
+  G.forEach((g, i) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(g.T, 3));
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+      color: CORES[i%CORES.length], metalness: 0.2, roughness: 0.45, side: THREE.DoubleSide, flatShading: true
+    }));
+    m.position.set(-cx, -cy, -cz);
+    grp.add(m);
+  });
+
+  let drag = false, lx = 0, ly = 0;
+  el.onpointerdown = ev => { drag = true; lx = ev.clientX; ly = ev.clientY; el.setPointerCapture(ev.pointerId); };
+  el.onpointermove = ev => {
+    if (!drag) return;
+    grp.rotation.z += (ev.clientX - lx) * 0.01;
+    grp.rotation.x = Math.max(-1.5, Math.min(1.5, grp.rotation.x + (ev.clientY - ly) * 0.01));
+    lx = ev.clientX; ly = ev.clientY;
+  };
+  el.onpointerup = el.onpointercancel = () => { drag = false; };
+
+  const st = { alive: true, r };
+  VIEWS[divId] = st;
+  const loop = () => { if (!st.alive) return; requestAnimationFrame(loop); r.render(sc, cam); };
+  loop();
+}
+
+// Cilindro com corte inclinado
+function model3dCil(D, H, a, n){
+  const R = D/2, t = Math.tan(a*Math.PI/180), G = grupos(['Lateral', 'Base inferior', 'Topo (corte)']);
+  const [L, Bf, Tp] = G.map(g => g.T);
+  const c0 = [0,0,0], ct = [0,0,H];
+  const B = i => { const q = 2*Math.PI*i/n; return [R*Math.cos(q), R*Math.sin(q), 0]; };
+  const U = i => { const q = 2*Math.PI*i/n; return [R*Math.cos(q), R*Math.sin(q), H + R*t*Math.cos(q)]; };
+  for (let i = 0; i < n; i++){
+    const j = (i+1) % n;
+    tri(L, B(i), U(i), B(j)); tri(L, B(j), U(i), U(j));
+    tri(Bf, c0, B(j), B(i));  tri(Tp, ct, U(i), U(j));
+  }
+  return G;
+}
+
+// Cone / tronco concêntrico
+function model3dCon(R1, R2, H, n){
+  const G = grupos(['Lateral', 'Base maior', 'Topo menor']);
+  const [L, B1, B2] = G.map(g => g.T);
+  const c0 = [0,0,0], c1 = [0,0,H];
+  const P = i => { const q = 2*Math.PI*i/n; return [R1*Math.cos(q), R1*Math.sin(q), 0]; };
+  const Q = i => { const q = 2*Math.PI*i/n; return [R2*Math.cos(q), R2*Math.sin(q), H]; };
+  for (let i = 0; i < n; i++){
+    const j = (i+1) % n;
+    tri(L, P(i), Q(i), P(j)); tri(L, P(j), Q(i), Q(j));
+    tri(B1, c0, P(j), P(i));
+    if (R2 > 0) tri(B2, c1, Q(i), Q(j));
+  }
+  return G;
+}
+
+// Cone excêntrico (geratriz do topo reta)
+function model3dExc(D1, D2, H, n){
+  const R = D1/2, r = D2/2, e = R - r;
+  const G = grupos(['Lateral', 'Base maior', 'Topo menor']);
+  const [L, B1, B2] = G.map(g => g.T);
+  const P = i => { const q = 2*Math.PI*i/n; return [R*Math.cos(q), R*Math.sin(q), 0]; };
+  const Q = i => { const q = 2*Math.PI*i/n; return [r*Math.cos(q), e + r*Math.sin(q), H]; };
+  const c0 = [0,0,0], c1 = [0,e,H];
+  for (let i = 0; i < n; i++){
+    const j = (i+1) % n;
+    tri(L, P(i), Q(i), P(j)); tri(L, P(j), Q(i), Q(j));
+    tri(B1, c0, P(j), P(i));  tri(B2, c1, Q(i), Q(j));
+  }
+  return G;
+}
+
+// Cotovelo: peças com juntas em meia-esquadria
+function model3dCot(D, al, k, n, Lseg = D){
+  const R = D/2, L0 = Lseg, dl = (al/(k-1))*Math.PI/180;
+  const G = grupos(['Peças (lateral)', 'Ponta inicial', 'Ponta final']);
+  const [L, P0, P1] = G.map(g => g.T);
+  const dir = j => [Math.sin(j*dl), 0, Math.cos(j*dl)];
+  const C = [[0,0,0]];
+  for (let j = 0; j < k; j++) C.push(vadd(C[j], vsc(dir(j), L0)));
+  const tang = s => s === 0 ? dir(0) : s === k ? dir(k-1) : vnorm(vadd(dir(s-1), dir(s)));
+  const ring = s => {
+    const t = tang(s), e1 = vnorm(vcross(t, [0,1,0])), e2 = vcross(t, e1), out = [];
+    for (let i = 0; i < n; i++){
+      const q = 2*Math.PI*i/n;
+      out.push(vadd(C[s], vsc(vadd(vsc(e1, Math.cos(q)), vsc(e2, Math.sin(q))), R)));
+    }
+    return out;
+  };
+  const RG = [];
+  for (let s = 0; s <= k; s++) RG.push(ring(s));
+  for (let s = 0; s < k; s++){
+    for (let i = 0; i < n; i++){
+      const j = (i+1) % n;
+      tri(L, RG[s][i], RG[s][j], RG[s+1][i]);
+      tri(L, RG[s][j], RG[s+1][j], RG[s+1][i]);
+    }
+  }
+  for (const [s, T] of [[0, P0], [k, P1]]){
+    for (let i = 0; i < n; i++){ const j = (i+1) % n; tri(T, C[s], RG[s][j], RG[s][i]); }
+  }
+  return G;
+}
+
+// Transição retangular para redonda
+function model3dTra(W, H, D, h, n, DX = 0, DY = 0){
+  const G = grupos(['Lateral (superfície)', 'Base retangular', 'Topo redondo']);
+  const [L, B1, B2] = G.map(g => g.T);
+  const per = 2*(W+H), P = [], Q = [];
+  for (let i = 0; i < n; i++){
+    P.push([...rectAt(per*i/n, W, H), 0]);
+    const q = 2*Math.PI*i/n;
+    Q.push([D/2*Math.cos(q) + DX, D/2*Math.sin(q) + DY, h]);
+  }
+  for (let i = 0; i < n; i++){
+    const j = (i+1) % n;
+    tri(L, P[i], Q[i], P[j]); tri(L, P[j], Q[i], Q[j]);
+    tri(B1, [0,0,0], P[j], P[i]); tri(B2, [0,0,h], Q[i], Q[j]);
+  }
+  return G;
+}
+
+function v3(tab){
+  const n = 24;
+  const bad = id => { $(id).innerHTML = err('Corrija as medidas antes de ver em 3D.'); };
+  if (tab === 'cil'){
+    const D = dmed(v('cD'), v('cT'), $('cTipo').value), H = v('cH'), a = v('cA');
+    if (!(D > 0 && H > 0)) return bad('cView');
+    return mount3d('cView', model3dCil(D, H, a, n));
+  }
+  if (tab === 'con'){
+    const t = v('kT'), tp = $('kTipo').value;
+    const D1 = dmed(v('kD1'), t, tp), D2 = Math.max(0, dmed(v('kD2'), t, tp)), H = v('kH');
+    if (!(D1 > D2 && H > 0)) return bad('kView');
+    return mount3d('kView', model3dCon(D1/2, D2/2, H, n));
+  }
+  if (tab === 'exc'){
+    const t = v('eT'), tp = $('eTipo').value;
+    const D1 = dmed(v('eD1'), t, tp), D2 = dmed(v('eD2'), t, tp), H = v('eH');
+    if (!(D1 > D2 && D2 > 0 && H > 0)) return bad('eView');
+    return mount3d('eView', model3dExc(D1, D2, H, n));
+  }
+  if (tab === 'cot'){
+    const D = dmed(v('oD'), v('oT'), $('oTipo').value), al = v('oA'), k = Math.round(v('oK'));
+    if (!(D > 0 && al > 0 && k >= 2)) return bad('oView');
+    return mount3d('oView', model3dCot(D, al, k, n));
+  }
+  if (tab === 'cha'){
+    const t = v('hT'), tp = $('hTipo').value;
+    const D1 = dmed(v('hD1'), t, tp), D2 = Math.max(0, dmed(v('hD2'), t, tp)), H = v('hH');
+    const S = Math.max(0, v('hS') || 0);
+    if (!(D1 > D2 && H > 0)) return bad('hView');
+    const sai = S > 0 ? model3dCil(D1, S, 0, n).filter(g => g.nome !== 'Topo (corte)').map(g => ({ nome: 'Saia - ' + g.nome, T: g.T })) : [];
+    const con = model3dCon(D1/2, D2/2, H, n).map(g => ({ nome: 'Cone - ' + g.nome, T: g.T.map((x, i) => i % 3 === 2 ? x + S : x) }));
+    return mount3d('hView', [...sai, ...con]);
+  }
+  if (tab === 'gra'){
+    const t = v('gT'), tp = $('gTipo').value;
+    const D = dmed(v('gD'), t, tp), Rc = v('gR'), al = v('gA'), k = Math.round(v('gK'));
+    if (!(D > 0 && Rc > D/2 && al > 0 && k >= 2)) return bad('gView');
+    const dl = al/(k-1)*Math.PI/180;
+    return mount3d('gView', model3dCot(D, al, k, n, 2*Rc*Math.sin(dl/2)));
+  }
+  if (tab === 'tra'){
+    const t = v('tT');
+    const W = v('tW')-t, H = v('tH')-t, D = v('tD')-t, h = v('tZ');
+    if (!(W > 0 && H > 0 && D > 0 && h > 0)) return bad('tView');
+    return mount3d('tView', model3dTra(W, H, D, h, n, v('tX') || 0, v('tY') || 0));
+  }
+}
+
+// Chapéu chinês: saia cilíndrica (retângulo) + tronco de cone (setor)
+function calcCha(){
+  const t = v('hT'), tp = $('hTipo').value;
+  const D1 = dmed(v('hD1'), t, tp), D2 = Math.max(0, dmed(v('hD2'), t, tp));
+  const H = v('hH'), S = Math.max(0, v('hS') || 0);
+  if (!(D1 > D2 && H > 0)) { $('hOut').innerHTML = err('Use D1 > D2 e H > 0.'); return; }
+  const s = Math.hypot(H, (D1-D2)/2);
+  const S1 = s*D1/(D1-D2), S2 = s*D2/(D1-D2), th = 180*D1/S1;
+  $('hOut').innerHTML = `
+    <p>Linha neutra: D1 = <b>${D1.toFixed(1)} mm</b> · D2 = <b>${D2.toFixed(1)} mm</b></p>
+    <p>Saia cilíndrica (retângulo): <b>${(Math.PI*D1).toFixed(1)} × ${S.toFixed(1)} mm</b></p>
+    <p>Cone (setor): geratriz <b>${s.toFixed(1)} mm</b>, raio até a borda maior <b>${S1.toFixed(1)} mm</b>, raio até a borda menor <b>${S2.toFixed(1)} mm</b>, ângulo <b>${th.toFixed(2)}°</b></p>
+    <p>Altura total: <b>${(H+S).toFixed(1)} mm</b></p>
+    ${S > 0 ? `<div class="viz">${skirtSvg(Math.PI*D1, S)}</div>` : ''}
+    <div class="viz">${sectorSvg(S1, S2, s, th, D1, D2)}</div>
+    <p class="note">Se a saia tiver emenda ou aba de encaixe, some essa folga ao comprimento do retângulo.</p>`;
+}
+
+// Realidade aumentada (WebXR): cone em tamanho real sobre o chão (Android + Chrome + ARCore)
+let RA_SESSION = null;
+// Escolhe um espaço de referência aceito pelo aparelho (mesmo método do teste de RA)
+async function testarEspacos(session){
+  const ok = {};
+  for (const tp of ['viewer', 'local', 'local-floor', 'unbounded']){
+    try { await session.requestReferenceSpace(tp); ok[tp] = true; } catch (e) { ok[tp] = false; }
+  }
+  if (!ok.viewer || !(ok.local || ok['local-floor'])) throw new Error('espaços de referência não suportados');
+  return ok.local ? 'local' : 'local-floor';
+}
+
+function fecharRA(){ if (RA_SESSION) RA_SESSION.end(); }
+async function verEmRA(){
+  const msg = h => { $('kAR').innerHTML = h; };
+  if (!navigator.xr || !(await navigator.xr.isSessionSupported('immersive-ar').catch(() => false))){
+    msg(err('Realidade aumentada não disponível neste aparelho ou navegador. Use Android com Chrome e ARCore.'));
+    return;
+  }
+  if (typeof THREE === 'undefined'){ msg(err('Biblioteca 3D indisponível.')); return; }
+  const t = v('kT'), tp = $('kTipo').value;
+  const D1 = dmed(v('kD1'), t, tp), D2 = Math.max(0, dmed(v('kD2'), t, tp)), H = v('kH');
+  if (!(D1 > D2 && H > 0)) { msg(err('Corrija as medidas do cone antes de abrir a RA.')); return; }
+
+  const G = model3dCon(D1/2, D2/2, H, 48);
+  const geo = new THREE.BufferGeometry();
+  const T = G.flatMap(g => g.T);
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(T, 3));
+  geo.computeVertexNormals();
+
+  const r = new THREE.WebGLRenderer({antialias: true, alpha: true});
+  r.xr.enabled = true;
+  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  r.setSize(window.innerWidth, window.innerHeight);
+  r.domElement.style.position = 'fixed';
+  r.domElement.style.left = '0'; r.domElement.style.top = '0';
+  document.body.appendChild(r.domElement);
+
+  const sc = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera();
+  sc.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.6);
+  dl.position.set(1, 2, 1);
+  sc.add(dl);
+
+  const obj = new THREE.Group();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color: 0xb5540a, side: THREE.DoubleSide, flatShading: true}));
+  mesh.rotation.x = -Math.PI/2;      // eixo do cone na vertical
+  obj.add(mesh);
+  obj.scale.set(0.001, 0.001, 0.001); // mm para metros: tamanho real
+  obj.visible = false;
+  sc.add(obj);
+
+  const ret = new THREE.Mesh(
+    new THREE.RingGeometry(0.06, 0.08, 40).rotateX(-Math.PI/2),
+    new THREE.MeshBasicMaterial({color: 0x00ff66})
+  );
+  ret.matrixAutoUpdate = false;
+  ret.visible = false;
+  sc.add(ret);
+
+  let session;
+  try {
+    session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test']
+    });
+  } catch (e) {
+    r.domElement.remove();
+    msg(err('Não foi possível iniciar a RA: ' + e.message));
+    return;
+  }
+  RA_SESSION = session;
+  let refTipo;
+  try { refTipo = await testarEspacos(session); }
+  catch (e) { session.end(); msg(err('Este aparelho não aceita os espaços necessários para a RA.')); return; }
+  r.xr.setReferenceSpaceType(refTipo);
+  await r.xr.setSession(session);
+
+  const viewer = await session.requestReferenceSpace('viewer');
+  const hitSource = await session.requestHitTestSource({space: viewer});
+  const refSpace = await r.xr.getReferenceSpace();
+  let lastHit = null;
+
+  session.addEventListener('select', () => {
+    if (!lastHit) return;
+    obj.position.setFromMatrixPosition(lastHit);
+    obj.visible = true;
+  });
+
+  r.setAnimationLoop((time, frame) => {
+    if (frame && hitSource){
+      const res = frame.getHitTestResults(hitSource);
+      if (res.length){
+        const pose = res[0].getPose(refSpace);
+        if (pose){
+          lastHit = new THREE.Matrix4().fromArray(pose.transform.matrix);
+          ret.matrix.copy(lastHit);
+          ret.visible = true;
+          if (!obj.visible){ obj.position.setFromMatrixPosition(lastHit); obj.visible = true; }
+        }
+      }
+    }
+    r.render(sc, cam);
+  });
+
+  session.addEventListener('end', () => {
+    r.setAnimationLoop(null);
+    r.domElement.remove();
+    $('arOverlay').style.display = 'none';
+    RA_SESSION = null;
+  });
+  msg('');
+}
+
+show('con');
+</script>
+<script>
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+</script>
+</body>
+</html>
