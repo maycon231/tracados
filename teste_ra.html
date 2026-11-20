@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teste de RA</title>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:#222;color:#eee;padding:20px}
+button{width:100%;padding:16px;font-size:18px;border:0;border-radius:10px;background:#b5540a;color:#fff;margin-top:12px}
+#s{margin-top:16px;font-size:16px;line-height:1.5;white-space:pre-wrap}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<h3>Teste de realidade aumentada</h3>
+<p>1) Verificar suporte &nbsp; 2) Iniciar RA &nbsp; 3) Toque na tela para colocar o cubo.</p>
+<button onclick="checar()">1) Verificar suporte</button>
+<button onclick="iniciar()">2) Iniciar RA</button>
+<div id="s"></div>
+<script>
+const S = t => document.getElementById('s').textContent += t + '\n';
+async function checar(){
+  document.getElementById('s').textContent = '';
+  S('navigator.xr: ' + (!!navigator.xr));
+  if (!navigator.xr) { S('Este navegador não tem WebXR.'); return; }
+  try { S('immersive-ar suportado: ' + await navigator.xr.isSessionSupported('immersive-ar')); }
+  catch (e) { S('Erro ao verificar: ' + e.message); }
+}
+async function iniciar(){
+  document.getElementById('s').textContent = '';
+  try {
+    const session = await navigator.xr.requestSession('immersive-ar', {requiredFeatures: ['hit-test']});
+    S('Sessão iniciada. Mova o celular devagar até achar o chão.');
+    const r = new THREE.WebGLRenderer({antialias: true, alpha: true});
+    r.xr.enabled = true;
+    r.setSize(innerWidth, innerHeight);
+    r.domElement.style.cssText = 'position:fixed;left:0;top:0';
+    document.body.appendChild(r.domElement);
+    const sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera();
+    sc.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(0.1,0.1,0.1), new THREE.MeshStandardMaterial({color:0xb5540a}));
+    cube.visible = false; sc.add(cube);
+    const ret = new THREE.Mesh(new THREE.RingGeometry(0.06,0.08,40).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({color:0x00ff66}));
+    ret.matrixAutoUpdate = false; ret.visible = false; sc.add(ret);
+    await r.xr.setSession(session);
+    const viewer = await session.requestReferenceSpace('viewer');
+    const hit = await session.requestHitTestSource({space: viewer});
+    const ref = await r.xr.getReferenceSpace();
+    let last = null;
+    session.addEventListener('select', () => { if (last){ cube.position.setFromMatrixPosition(last); cube.visible = true; } });
+    r.setAnimationLoop((t, f) => {
+      if (f){
+        const res = f.getHitTestResults(hit);
+        if (res.length){ const p = res[0].getPose(ref); if (p){ last = new THREE.Matrix4().fromArray(p.transform.matrix); ret.matrix.copy(last); ret.visible = true; } }
+      }
+      r.render(sc, cam);
+    });
+    session.addEventListener('end', () => { r.setAnimationLoop(null); r.domElement.remove(); S('Sessão encerrada.'); });
+  } catch (e) {
+    S('Erro ao iniciar: ' + e.name + ' - ' + e.message);
+  }
+}
+</script>
+</body>
+</html>
