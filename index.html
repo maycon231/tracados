@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Traçados de Caldeiraria</title>
+<style>
+:root{--bg:#f5f5f2;--fg:#1d1d1b;--card:#fff;--line:#c9c9c2;--acc:#b5540a;--mut:#777}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#171716;--fg:#ececea;--card:#22221f;--line:#4a4a45;--acc:#e0813a;--mut:#9a9a92}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif}
+header{padding:16px;font-weight:700;font-size:18px;border-bottom:1px solid var(--line)}
+main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
+h2{font-size:16px;margin:22px 0 8px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+a.card,div.card{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 14px;text-decoration:none;color:var(--fg);font-weight:600;font-size:15px}
+a.card{border-color:var(--acc)}
+div.card{opacity:.45}
+small{display:block;font-weight:400;font-size:12px;color:var(--mut);margin-top:4px}
+</style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#b5540a">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+<body>
+<header>Traçados de Caldeiraria</header>
+<main>
+<h2>Disponíveis</h2>
+<div class="grid">
+<a class="card" href="cilindros.html">Cilindros<small>Corte inclinado</small></a>
+<a class="card" href="cones.html">Cones<small>Tronco, excêntrico e chapéu chinês</small></a>
+<a class="card" href="cotovelos.html">Cotovelos<small>Gomos e meia-esquadria</small></a>
+<a class="card" href="transicoes.html">Transições<small>Retângulo para redondo</small></a>
+<a class="card" href="reducoes.html">Reduções<small>Tubo concêntrica e excêntrica</small></a>
+<a class="card" href="curvas.html">Curvas<small>Gomos e grau na curva</small></a>
+<a class="card" href="tremonhas.html">Tremonhas<small>Concêntrica e excêntrica</small></a>
+<a class="card" href="bocas.html">Bocas de lobo<small>Inclinada e excêntrica</small></a>
+<a class="card" href="outros.html">Outros<small>Furação de flange</small></a>
+</div>
+<h2>Próximos lotes</h2>
+<div class="grid">
+<div class="card">Bifurcações<small>Em breve</small></div>
+<div class="card">Elipses<small>Em breve</small></div>
+<div class="card">Deslocamentos<small>Em breve</small></div>
+</div>
+</main>
+<script>
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+</script>
+</body>
+</html>
