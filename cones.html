@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Traçados de Caldeiraria</title>
+<style>
+:root{--bg:#f5f5f2;--fg:#1d1d1b;--card:#fff;--line:#c9c9c2;--acc:#b5540a;--mut:#666}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#171716;--fg:#ececea;--card:#22221f;--line:#4a4a45;--acc:#e0813a;--mut:#9a9a92}}
+:root[data-theme="dark"]{--bg:#171716;--fg:#ececea;--card:#22221f;--line:#4a4a45;--acc:#e0813a;--mut:#9a9a92}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif}
+header{padding:16px;font-weight:700;font-size:18px;border-bottom:1px solid var(--line)}
+nav{display:flex;gap:6px;padding:10px 16px;overflow-x:auto}
+nav button{flex:1;min-width:max-content;padding:10px 12px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;font-size:14px}
+nav button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+main{padding:0 16px 24px;max-width:720px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px}
+label{display:block;font-size:13px;color:var(--mut);margin-top:10px}
+input,select{width:100%;padding:10px;margin-top:4px;font-size:16px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.go{width:100%;margin-top:14px;padding:12px;font-size:16px;border:0;border-radius:8px;background:var(--acc);color:#fff;font-weight:600}
+.res{margin-top:14px;font-size:15px;line-height:1.6}
+.res b{color:var(--acc)}
+.res p{margin:6px 0}
+.viz{margin-top:12px;background:var(--bg);border-radius:8px;padding:6px}
+.viz svg{width:100%;height:auto;display:block}
+.viz line{stroke:var(--acc);stroke-width:1.2}
+.err{color:#c0392b;font-size:14px}
+.note{font-size:12px;color:var(--mut);margin-top:10px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#b5540a">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>.ra-btn{pointer-events:auto;padding:12px 16px;border:0;border-radius:10px;background:#b5540a;color:#fff;font-size:15px}</style>
+</head>
+<body>
+<header><a href="index.html" style="color:var(--acc);text-decoration:none">&larr; Menu</a> &nbsp; Cones</header>
+<nav><button data-t="con" class="on" onclick="show('con')">Cone</button><button data-t="exc" onclick="show('exc')">Cone excêntrico</button></nav>
+<div id="arOverlay" style="position:fixed;left:0;top:0;right:0;bottom:0;z-index:9999;pointer-events:none">
+  <div class="ra-ctrl" style="display:none;position:absolute;left:0;right:0;bottom:28px;padding:0 12px;flex-wrap:wrap;gap:8px;justify-content:center">
+    <button class="ra-btn" onclick="raAcao('girar')">Girar</button>
+    <button class="ra-btn" onclick="raAcao('inverter')">Inverter</button>
+    <button class="ra-btn" onclick="raAcao('mover')">Mover</button>
+    <button class="ra-btn" onclick="raAcao('fechar')">Fechar</button>
+  </div>
+</div>
+<main>
+<section id="con" hidden>
+  <div class="card">
+    <h3 style="margin:0">Cone / tronco de cone (inclui chapéu chinês)</h3>
+    <label>Diâmetro maior D1 (mm)<input id="kD1" type="number" value="300"></label>
+    <label>Diâmetro menor D2 (mm, 0 = cone pleno)<input id="kD2" type="number" value="120"></label>
+    <label>O diâmetro informado é<select id="kTipo"><option value="ext">externo</option><option value="int">interno</option><option value="med">linha média</option></select></label>
+    <label>Espessura t (mm)<input id="kT" type="number" value="6"></label>
+    <label>Altura H (mm)<input id="kH" type="number" value="250"></label>
+    <button class="go" onclick="calcCone()">Calcular</button>
+    <div id="kOut" class="res"></div>
+    <button class="go" onclick="v3('con')">Ver objeto em 3D</button>
+    <button class="go" onclick="verEmRA('con')">Ver em realidade aumentada (Android)</button>
+    <div id="kAR" class="note"></div>
+    <div id="kView" class="viz" style="height:340px;padding:0;overflow:hidden"></div>
+  </div>
+</section>
+<section id="exc" hidden>
+  <div class="card">
+    <h3 style="margin:0">Cone excêntrico (geratriz do topo reta)</h3>
+    <label>Diâmetro maior D1 (mm)<input id="eD1" type="number" value="300"></label>
+    <label>Diâmetro menor D2 (mm)<input id="eD2" type="number" value="150"></label>
+    <label>Altura H (mm)<input id="eH" type="number" value="250"></label>
+    <label>O diâmetro informado é<select id="eTipo"><option value="ext">externo</option><option value="int">interno</option><option value="med">linha média</option></select></label>
+    <label>Espessura t (mm)<input id="eT" type="number" value="6"></label>
+    <label>Divisões do círculo (múltiplo de 4 recomendado)<input id="eN" type="number" value="24"></label>
+    <button class="go" onclick="calcExc()">Calcular</button>
+    <div id="eOut" class="res"></div>
+    <button class="go" onclick="v3('exc')">Ver objeto em 3D</button>
+    <div id="eView" class="viz" style="height:340px;padding:0;overflow:hidden"></div>
+    <button class="go" onclick="verEmRA('exc')">Ver em realidade aumentada (Android)</button>
+    <div id="eAR" class="note"></div>
+    <p class="note">Arraste na tela para girar a peça.</p>
+  </div>
+</section>
+</main>
+<script src="base.js"></script>
+<script>
+// ===== Cones: planificação, geometria e RA específicos desta página =====
+
+function show(t){
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('section').forEach(s => s.hidden = s.id !== t);
+}
+
+// Desenho do setor (peça já planificada): só o contorno, o vértice e duas legendas
+function sectorSvg(S1, S2, th){
+  const k = 150/S1, r1 = S1*k, r2 = S2*k, cx = 200, cy = 250;
+  const P = (r, a) => [cx + r*Math.sin(a), cy - r*Math.cos(a)];
+  const f = p => p[0].toFixed(1) + ',' + p[1].toFixed(1);
+  const a1 = -th/2*Math.PI/180, a2 = th/2*Math.PI/180, large = th > 180 ? 1 : 0;
+  const d = `M${f(P(r1,a1))} A${r1} ${r1} 0 ${large} 1 ${f(P(r1,a2))} L${f(P(r2,a2))} A${r2} ${r2} 0 ${large} 0 ${f(P(r2,a1))} Z`;
+  return `<svg viewBox="0 0 400 300">
+    <path d="${d}" style="fill:var(--card);stroke:var(--acc);stroke-width:2"/>
+    <circle cx="${cx}" cy="${cy}" r="4" style="fill:var(--acc)"/>
+    <text x="200" y="90" text-anchor="middle" style="${LBL}">borda de fora</text>
+    <text x="200" y="${(cy - r2 - 10).toFixed(1)}" text-anchor="middle" style="${LBL}">borda de dentro</text>
+    <text x="${cx + 10}" y="${cy + 20}" style="${LBL}">vértice (ponta)</text>
+  </svg>`;
+}
+
+// ----- Cone / tronco concêntrico -----
+function calcCone(){
+  const t = v('kT'), tp = $('kTipo').value;
+  const D1 = dmed(v('kD1'), t, tp), D2 = Math.max(0, dmed(v('kD2'), t, tp)), H = v('kH');
+  if (!(D1 > D2) || !(D2 >= 0) || !(H > 0)) { $('kOut').innerHTML = err('Use D1 > D2 ≥ 0 e H > 0.'); return; }
+  const s = Math.hypot(H, (D1 - D2) / 2);        // geratriz do tronco
+  const S1 = s * D1 / (D1 - D2);                 // do vértice à borda maior
+  const S2 = s * D2 / (D1 - D2);                 // do vértice à borda menor
+  const th = 180 * D1 / S1;                      // ângulo do setor (°)
+  $('kOut').innerHTML = `
+    <p><b>Medidas para o traçado</b></p>
+    <p>Raio grande (ponto até a borda de fora): <b>${S1.toFixed(1)} mm</b></p>
+    <p>Raio pequeno (ponto até a borda de dentro): <b>${S2.toFixed(1)} mm</b></p>
+    <p>Ângulo entre as duas bordas retas: <b>${th.toFixed(1)}°</b></p>
+    <div class="viz">${sectorSvg(S1, S2, th)}</div>
+    <p><b>Passo a passo</b></p>
+    <ol class="passos">
+      <li>Marque um ponto no papel. Ele será a ponta do cone.</li>
+      <li>Com o compasso nesse ponto, abra <b>${S1.toFixed(1)} mm</b> e trace um arco grande.</li>
+      <li>Sem mudar o centro do compasso, abra <b>${S2.toFixed(1)} mm</b> e trace um arco menor, por dentro do primeiro.</li>
+      <li>Desenhe uma reta saindo do ponto até o arco grande. Essa é a primeira borda reta.</li>
+      <li>Com o transferidor sobre essa reta, marque <b>${th.toFixed(1)}°</b> e desenhe a segunda reta saindo do mesmo ponto.</li>
+      <li>Recorte a peça seguindo as duas retas e os dois arcos.</li>
+      <li>Confira: a borda de fora deve medir <b>${(Math.PI * D1).toFixed(1)} mm</b>. Para montar, una as duas retas e a peça vira um cone.</li>
+    </ol>
+    <p class="note">Antes de cortar a chapa de verdade, faça o traçado em papel ou papelão para testar. Se a peça for emendada, some uma folga pequena na borda da emenda.</p>`;
+}
+
+// ----- Cone excêntrico (geratriz do topo reta) -----
+// As duas bases são homotetias de centro no vértice V
+function calcExc(){
+  const t = v('eT'), tp = $('eTipo').value;
+  const D1 = dmed(v('eD1'), t, tp), D2 = dmed(v('eD2'), t, tp), H = v('eH'), n = Math.round(v('eN'));
+  if (!(D1 > D2 && D2 > 0 && H > 0 && n >= 8)) { $('eOut').innerHTML = err('Use D1 > D2 > 0, H > 0 e divisões ≥ 8.'); return; }
+  const R = D1/2, r = D2/2, e = R - r, k = r/R;
+  const V = [0, R, H*R/e];                  // vértice do cone
+  const P = [], Q = [];
+  for (let i = 0; i < n; i++){
+    const a = 2*Math.PI*i/n;
+    const p = [R*Math.cos(a), R*Math.sin(a), 0];
+    P.push(p);
+    Q.push(p.map((c, j) => V[j] + k*(c - V[j])));
+  }
+  const gen = P.map((p, i) => Math.hypot(p[0]-Q[i][0], p[1]-Q[i][1], p[2]-Q[i][2]));
+  const seq = [];
+  for (let i = 0; i < n; i++) seq.push(P[i], Q[i]);
+  seq.push(P[0]);
+  const {X, Y} = stripDev(seq);
+  const M = seq.length;
+  const closure = Math.hypot(X[M-1] - X[0], Y[M-1] - Y[0]);
+  const g = fit(X, Y, 560, 360);
+  let lines = '';
+  for (let i = 0; i < M; i++){
+    for (const j of [i + 1, i + 2]){
+      if (j < M){
+        const [x1, y1] = g.f(X[i], Y[i]), [x2, y2] = g.f(X[j], Y[j]);
+        lines += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+      }
+    }
+  }
+  const w = Math.max(...X) - Math.min(...X), hgt = Math.max(...Y) - Math.min(...Y);
+  $('eOut').innerHTML = `
+    <p>Linha neutra: D1 = <b>${D1.toFixed(1)} mm</b> · D2 = <b>${D2.toFixed(1)} mm</b></p>
+    <p>Desvio dos eixos (excentricidade): <b>${e.toFixed(1)} mm</b></p>
+    <p>Geratriz do topo (reta, menor): <b>${Math.min(...gen).toFixed(1)} mm</b></p>
+    <p>Geratriz do fundo (maior): <b>${Math.max(...gen).toFixed(1)} mm</b></p>
+    <p>Dimensões aproximadas da planificação: <b>${w.toFixed(1)} × ${hgt.toFixed(1)} mm</b></p>
+    <p>Erro de fechamento: <b>${closure.toFixed(1)} mm</b></p>
+    <div class="viz"><svg viewBox="0 0 560 360">${lines}</svg></div>
+    <p class="note">Contorno de corte: una os pontos da base maior (P) e da menor (Q) na ordem das linhas. A geratriz do topo é a reta de referência. Aumente as divisões se o erro de fechamento for alto. Valide com gabarito antes de cortar.</p>`;
+}
+
+// ===== Geometria 3D dos cones (linha neutra, em mm) =====
+// Cone / tronco concêntrico
+function model3dCon(R1, R2, H, n){
+  const G = grupos(['Lateral', 'Base maior', 'Topo menor']);
+  const [L, B1, B2] = G.map(g => g.T);
+  const c0 = [0,0,0], c1 = [0,0,H];
+  const P = i => { const q = 2*Math.PI*i/n; return [R1*Math.cos(q), R1*Math.sin(q), 0]; };
+  const Q = i => { const q = 2*Math.PI*i/n; return [R2*Math.cos(q), R2*Math.sin(q), H]; };
+  for (let i = 0; i < n; i++){
+    const j = (i+1) % n;
+    tri(L, P(i), Q(i), P(j)); tri(L, P(j), Q(i), Q(j));
+    tri(B1, c0, P(j), P(i));
+    if (R2 > 0) tri(B2, c1, Q(i), Q(j));
+  }
+  return G;
+}
+
+// Cone excêntrico (geratriz do topo reta; deslocamento e = (D1 − D2)/2)
+function model3dExc(D1, D2, H, n){
+  const R = D1/2, r = D2/2, e = R - r;
+  const G = grupos(['Lateral', 'Base maior', 'Topo menor']);
+  const [L, B1, B2] = G.map(g => g.T);
+  const P = i => { const q = 2*Math.PI*i/n; return [R*Math.cos(q), R*Math.sin(q), 0]; };
+  const Q = i => { const q = 2*Math.PI*i/n; return [r*Math.cos(q), e + r*Math.sin(q), H]; };
+  const c0 = [0,0,0], c1 = [0,e,H];
+  for (let i = 0; i < n; i++){
+    const j = (i+1) % n;
+    tri(L, P(i), Q(i), P(j)); tri(L, P(j), Q(i), Q(j));
+    tri(B1, c0, P(j), P(i));  tri(B2, c1, Q(i), Q(j));
+  }
+  return G;
+}
+
+// Geometria de cada variante, para 3D (destino '3D') ou RA (destino 'RA').
+// Devolve os grupos, ou null depois de mostrar o erro em msg.
+function geometria(tab, n, msg, destino){
+  const erro = destino === 'RA' ? 'antes de abrir a RA' : 'antes de ver em 3D';
+  if (tab === 'con'){
+    const t = v('kT'), tp = $('kTipo').value;
+    const D1 = dmed(v('kD1'), t, tp), D2 = Math.max(0, dmed(v('kD2'), t, tp)), H = v('kH');
+    if (!(D1 > D2 && H > 0)) { msg(err('Corrija as medidas do cone ' + erro + '.')); return null; }
+    return model3dCon(D1/2, D2/2, H, n);
+  }
+  if (tab === 'exc'){
+    const t = v('eT'), tp = $('eTipo').value;
+    const D1 = dmed(v('eD1'), t, tp), D2 = dmed(v('eD2'), t, tp), H = v('eH');
+    if (!(D1 > D2 && D2 > 0 && H > 0)) { msg(err('Corrija as medidas do cone excêntrico ' + erro + '.')); return null; }
+    return model3dExc(D1, D2, H, n);
+  }
+}
+
+// Visualização 3D (24 divisões, como antes)
+const VIEW_ID = { con: 'kView', exc: 'eView' };
+function v3(tab){
+  const id = VIEW_ID[tab];
+  const G = geometria(tab, 24, h => { $(id).innerHTML = h; }, '3D');
+  if (G) mount3d(id, G);
+}
+
+// Realidade aumentada (48 divisões); botões e controles estão no base.js
+const AR_MSG = { con: 'kAR', exc: 'eAR' };
+function verEmRA(tab = 'con'){
+  const msg = h => { $(AR_MSG[tab]).innerHTML = h; };
+  abrirRA(() => geometria(tab, 48, msg, 'RA'), msg);
+}
+
+show('con');
+</script>
+<script>
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+</script>
+</body>
+</html>
