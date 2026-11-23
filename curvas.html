@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Traçados de Caldeiraria</title>
+<style>
+:root{--bg:#f5f5f2;--fg:#1d1d1b;--card:#fff;--line:#c9c9c2;--acc:#b5540a;--mut:#666}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#171716;--fg:#ececea;--card:#22221f;--line:#4a4a45;--acc:#e0813a;--mut:#9a9a92}}
+:root[data-theme="dark"]{--bg:#171716;--fg:#ececea;--card:#22221f;--line:#4a4a45;--acc:#e0813a;--mut:#9a9a92}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif}
+header{padding:16px;font-weight:700;font-size:18px;border-bottom:1px solid var(--line)}
+main{padding:0 16px 24px;max-width:720px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px}
+label{display:block;font-size:13px;color:var(--mut);margin-top:10px}
+input,select{width:100%;padding:10px;margin-top:4px;font-size:16px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.go{width:100%;margin-top:14px;padding:12px;font-size:16px;border:0;border-radius:8px;background:var(--acc);color:#fff;font-weight:600}
+.res{margin-top:14px;font-size:15px;line-height:1.6}
+.res b{color:var(--acc)}
+.res p{margin:6px 0}
+.viz{margin-top:12px;background:var(--bg);border-radius:8px;padding:6px}
+.viz svg{width:100%;height:auto;display:block}
+.tab{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}
+.tab th,.tab td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:right}
+.tab th:first-child,.tab td:first-child{text-align:left}
+.err{color:#c0392b;font-size:14px}
+.note{font-size:12px;color:var(--mut);margin-top:10px}
+.ra-btn{pointer-events:auto;padding:12px 16px;border:0;border-radius:10px;background:#b5540a;color:#fff;font-size:15px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#b5540a">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+<body>
+<header><a href="index.html" style="color:var(--acc);text-decoration:none">&larr; Menu</a> &nbsp; Curvas de gomos</header>
+
+<div id="arOverlay" style="position:fixed;left:0;top:0;right:0;bottom:0;z-index:9999;pointer-events:none">
+  <div id="arCtrl" style="display:none;position:absolute;left:0;right:0;bottom:28px;padding:0 12px;flex-wrap:wrap;gap:8px;justify-content:center">
+    <button class="ra-btn" onclick="raAcao('girar')">Girar</button>
+    <button class="ra-btn" onclick="raAcao('inverter')">Inverter</button>
+    <button class="ra-btn" onclick="raAcao('mover')">Mover</button>
+    <button class="ra-btn" onclick="raAcao('fechar')">Fechar</button>
+  </div>
+</div>
+
+<main>
+<section class="card">
+  <h3 style="margin:0">Curva de gomos</h3>
+  <label>Diâmetro D (mm)<input id="gD" type="number" value="200"></label>
+  <label>O diâmetro informado é<select id="gTipo"><option value="ext">externo</option><option value="int">interno</option><option value="med">linha média</option></select></label>
+  <label>Espessura t (mm)<input id="gT" type="number" value="3"></label>
+  <label>Raio da linha de centro R (mm)<input id="gR" type="number" value="400"></label>
+  <label>Ângulo total da curva α (°)<input id="gA" type="number" value="90"></label>
+  <label>Número de gomos (mínimo 2)<input id="gK" type="number" value="3"></label>
+  <label>Divisões da meia circunferência para o gabarito (2 a 12)<input id="gN" type="number" value="6"></label>
+  <button class="go" onclick="calcGomos()">Calcular</button>
+  <div id="gOut" class="res"></div>
+  <button class="go" onclick="v3Gomos()">Ver objeto em 3D</button>
+  <div id="gView" class="viz" style="height:340px;padding:0;overflow:hidden"></div>
+  <p class="note">Arraste na tela para girar a peça.</p>
+  <button class="go" onclick="verEmRA()">Ver em realidade aumentada (Android)</button>
+  <div id="gAR" class="note"></div>
+</section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const v = id => parseFloat($(id).value);
+const err = msg => `<span class="err">${msg}</span>`;
+const LBL = 'font-size:12px;fill:var(--fg);paint-order:stroke;stroke:var(--bg);stroke-width:4px;';
+
+// Converte o diâmetro informado para a linha neutra
+function dmed(D, t, tipo){
+  if (tipo === 'int') return D + t;
+  if (tipo === 'med') return D;
+  return D - t;
+}
+
+// Ajusta pontos a uma área de desenho, invertendo o eixo y
+function fit(xs, ys, W, H){
+  const minx = Math.min(...xs), maxx = Math.max(...xs);
+  const miny = Math.min(...ys), maxy = Math.max(...ys);
+  const s = Math.min((W - 40) / ((maxx - minx) || 1), (H - 40) / ((maxy - miny) || 1));
+  return { f: (x, y) => [20 + (x - minx) * s, H - 20 - (y - miny) * s] };
+}
+
+// Perfil de corte na planificação do gomo (inclinação beta, em graus)
+function profileSvg(D, beta, n){
+  const t = Math.tan(beta * Math.PI / 180);
+  const xs = [], ys = [];
+  for (let k = 0; k <= n; k++){
+    const f = 2 * Math.PI * k / n;
+    xs.push(D / 2 * f);
+    ys.push(D / 2 * t * Math.cos(f));
+  }
+  const g = fit(xs, ys, 560, 200);
+  const pts = xs.map((x, i) => g.f(x, ys[i]).map(c => c.toFixed(1)).join(',')).join(' ');
+  const delta = D * Math.abs(t);
+  return `<svg viewBox="0 0 560 220"><polyline points="${pts}" fill="none" style="stroke:var(--acc);stroke-width:2"/>
+    <text x="20" y="200" style="${LBL}">0°</text>
+    <text x="280" y="200" text-anchor="middle" style="${LBL}">180°</text>
+    <text x="540" y="200" text-anchor="end" style="${LBL}">360°</text>
+    <text x="280" y="216" text-anchor="middle" style="${LBL}">Desenvolvimento = πD = ${(Math.PI*D).toFixed(1)} mm · Δ altura = ${delta.toFixed(1)} mm</text></svg>`;
+}
+
+// Gabarito do semi-gomo: pontos da meia circunferência (0° a 180°)
+// x = R·θ (arco sobre a linha neutra), y = R·tan(β)·(1 + cos θ) (altura a partir da base reta)
+function gabaritoPts(D, beta, n){
+  const R = D / 2, A = R * Math.tan(beta * Math.PI / 180);
+  const pts = [];
+  for (let i = 0; i <= n; i++){
+    const th = Math.PI * i / n;
+    pts.push({ i, deg: 180 * i / n, x: R * th, y: A * (1 + Math.cos(th)) });
+  }
+  return pts;
+}
+
+// Desenho do gabarito: meia circunferência desenvolvida, com a base reta e os pontos numerados
+function gabSvg(pts, D, beta){
+  const R = D / 2, W = R * Math.PI, A = R * Math.tan(beta * Math.PI / 180);
+  const xs = [0, W, ...pts.map(q => q.x)], ys = [0, 2 * A, ...pts.map(q => q.y)];
+  const g = fit(xs, ys, 560, 260);
+  const [bx1, by] = g.f(0, 0), [bx2] = g.f(W, 0);
+  const curve = pts.map(q => g.f(q.x, q.y).map(c => c.toFixed(1)).join(',')).join(' ');
+  let marks = '';
+  pts.forEach(q => {
+    const [px, py] = g.f(q.x, q.y), [, by0] = g.f(q.x, 0);
+    marks += `<line x1="${px.toFixed(1)}" y1="${py.toFixed(1)}" x2="${px.toFixed(1)}" y2="${by0.toFixed(1)}" style="stroke:var(--mut);stroke-width:1;stroke-dasharray:3 3"/>`;
+    marks += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3" style="fill:var(--acc)"/>`;
+    marks += `<text x="${(px + 6).toFixed(1)}" y="${(py - 6).toFixed(1)}" style="${LBL}">${q.i + 1}</text>`;
+  });
+  return `<svg viewBox="0 0 560 260">
+    <line x1="${bx1.toFixed(1)}" y1="${by.toFixed(1)}" x2="${bx2.toFixed(1)}" y2="${by.toFixed(1)}" style="stroke:var(--fg);stroke-width:1.5"/>
+    <polyline points="${curve}" fill="none" style="stroke:var(--acc);stroke-width:2"/>
+    ${marks}
+  </svg>`;
+}
+
+// Parâmetros da curva (ou null se as medidas forem inválidas)
+function gomoParams(){
+  const t = v('gT'), D = dmed(v('gD'), t, $('gTipo').value);
+  const Rc = v('gR'), al = v('gA'), k = Math.round(v('gK'));
+  if (!(D > 0 && Rc > D / 2 && al > 0 && k >= 2)) return null;
+  const d = al / (k - 1);                              // deflexão por junta (°)
+  const L = 2 * Rc * Math.sin(d * Math.PI / 360);      // corda de cada gomo na linha de centro
+  return { D, Rc, al, k, d, L };
+}
+
+function calcGomos(){
+  const p = gomoParams();
+  if (!p) { $('gOut').innerHTML = err('Use D > 0, raio da linha de centro maior que D/2, ângulo > 0 e pelo menos 2 gomos.'); return; }
+  const { D, Rc, al, k, d, L } = p;
+  const beta = d / 2;
+  const alr = al * Math.PI / 180;
+  const delta = D * Math.tan(beta * Math.PI / 180);
+  const n = Math.min(12, Math.max(2, Math.round(v('gN')) || 6));
+  const pts = gabaritoPts(D, beta, n);
+  const rows = pts.map(q => `<tr><td>${q.i + 1}</td><td>${q.deg.toFixed(0)}°</td><td>${q.x.toFixed(1)}</td><td>${q.y.toFixed(1)}</td></tr>`).join('');
+  $('gOut').innerHTML = `
+    <p>Diâmetro da linha neutra: <b>${D.toFixed(1)} mm</b> · raio da linha de centro: <b>${Rc.toFixed(1)} mm</b></p>
+    <p>Número de gomos: <b>${k}</b> · deflexão por junta: <b>${d.toFixed(2)}°</b></p>
+    <p>Ângulo de corte em cada junta: <b>${beta.toFixed(2)}°</b> (a partir da perpendicular ao eixo)</p>
+    <p>Gomos de ponta (2): uma extremidade reta e a outra cortada a <b>${beta.toFixed(2)}°</b>.</p>
+    <p>Gomos centrais (${Math.max(0, k - 2)}): as duas extremidades cortadas a <b>${beta.toFixed(2)}°</b>.</p>
+    <p>Comprimento de cada gomo na linha de centro (corda): <b>${L.toFixed(1)} mm</b></p>
+    <p>Altura do corte: Δ = D·tan(β) = <b>${delta.toFixed(1)} mm</b> entre a geratriz mais alta e a mais baixa.</p>
+    <p>Comprimento da linha de centro: <b>${(Rc * alr).toFixed(1)} mm</b> · intradorso: <b>${((Rc - D / 2) * alr).toFixed(1)} mm</b> · extradorso: <b>${((Rc + D / 2) * alr).toFixed(1)} mm</b></p>
+    <div class="viz">${profileSvg(D, beta, 24)}</div>
+
+    <h3 style="margin:18px 0 0;font-size:16px">Gabarito do semi-gomo</h3>
+    <p class="note">Meia circunferência desenvolvida sobre a linha neutra, dividida em ${n} partes iguais (pontos 1 a ${n + 1}). A altura é medida a partir da base reta.</p>
+    <table class="tab">
+      <tr><th>Ponto</th><th>Ângulo θ</th><th>Posição x (mm)</th><th>Altura y (mm)</th></tr>
+      ${rows}
+    </table>
+    <div class="viz">${gabSvg(pts, D, beta)}</div>
+    <p class="note">Recorte o gabarito, posicione-o na chapa com a base reta alinhada à borda, marque e vire a peça para repetir o desenho. Confira com um gabarito de teste antes de cortar a chapa.</p>`;
+}
+
+// ===== Visualização 3D =====
+const VIEWS = {};
+const CORES = ['#b5540a', '#2a7fbf', '#3a9b5c', '#c94f7c', '#8a6fd1', '#d9a31f'];
+const vadd = (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
+const vsc = (a, s) => [a[0]*s, a[1]*s, a[2]*s];
+const vnorm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
+const vcross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const tri = (T, a, b, c) => { T.push(a[0],a[1],a[2], b[0],b[1],b[2], c[0],c[1],c[2]); };
+const grupos = nomes => nomes.map(nome => ({ nome, T: [] }));
+
+// Gomos da curva: cada peça é um tronco de cilindro cortado nas juntas (meia-esquadria)
+function model3dCot(D, al, k, n, Lseg = D){
+  const R = D/2, L0 = Lseg, dl = (al/(k-1))*Math.PI/180;
+  const G = grupos(['Peças (lateral)', 'Ponta inicial', 'Ponta final']);
+  const [L, P0, P1] = G.map(g => g.T);
+  const dir = j => [Math.sin(j*dl), 0, Math.cos(j*dl)];
+  const C = [[0,0,0]];
+  for (let j = 0; j < k; j++) C.push(vadd(C[j], vsc(dir(j), L0)));
+  const tang = s => s === 0 ? dir(0) : s === k ? dir(k-1) : vnorm(vadd(dir(s-1), dir(s)));
+  const ring = s => {
+    const t = tang(s), e1 = vnorm(vcross(t, [0,1,0])), e2 = vcross(t, e1), out = [];
+    for (let i = 0; i < n; i++){
+      const q = 2*Math.PI*i/n;
+      out.push(vadd(C[s], vsc(vadd(vsc(e1, Math.cos(q)), vsc(e2, Math.sin(q))), R)));
+    }
+    return out;
+  };
+  const RG = [];
+  for (let s = 0; s <= k; s++) RG.push(ring(s));
+  for (let s = 0; s < k; s++){
+    for (let i = 0; i < n; i++){
+      const j = (i+1) % n;
+      tri(L, RG[s][i], RG[s][j], RG[s+1][i]);
+      tri(L, RG[s][j], RG[s+1][j], RG[s+1][i]);
+    }
+  }
+  for (const [s, T] of [[0, P0], [k, P1]]){
+    for (let i = 0; i < n; i++){ const j = (i+1) % n; tri(T, C[s], RG[s][j], RG[s][i]); }
+  }
+  return G;
+}
+
+function mount3d(divId, G){
+  const div = $(divId);
+  if (typeof THREE === 'undefined'){ div.innerHTML = err('Biblioteca 3D indisponível neste ambiente.'); return; }
+  if (VIEWS[divId]){ VIEWS[divId].alive = false; VIEWS[divId].r.forceContextLoss(); }
+  G = G.filter(g => g.T.length);
+  let mnx=Infinity,mny=Infinity,mnz=Infinity,mxx=-Infinity,mxy=-Infinity,mxz=-Infinity;
+  for (const g of G){
+    for (let i = 0; i < g.T.length; i += 3){
+      const x = g.T[i], y = g.T[i+1], z = g.T[i+2];
+      mnx=Math.min(mnx,x); mxx=Math.max(mxx,x);
+      mny=Math.min(mny,y); mxy=Math.max(mxy,y);
+      mnz=Math.min(mnz,z); mxz=Math.max(mxz,z);
+    }
+  }
+  const cx=(mnx+mxx)/2, cy=(mny+mxy)/2, cz=(mnz+mxz)/2;
+  const size = Math.max(mxx-mnx, mxy-mny, mxz-mnz) || 1;
+  const w = div.clientWidth || 340, h = 260;
+  const r = new THREE.WebGLRenderer({antialias: true, alpha: true});
+  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  r.setSize(w, h);
+  const el = r.domElement;
+  el.style.width = '100%'; el.style.height = h + 'px'; el.style.display = 'block'; el.style.touchAction = 'none';
+  div.innerHTML = '';
+  div.style.height = 'auto';
+  div.appendChild(el);
+
+  const leg = document.createElement('div');
+  leg.style.cssText = 'padding:8px 10px;font-size:13px;line-height:1.9;color:var(--fg)';
+  leg.innerHTML = G.map((g, i) => `<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${CORES[i%CORES.length]};margin-right:6px;vertical-align:middle"></span>${g.nome}`).join('<br>');
+  div.appendChild(leg);
+
+  const sc = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(40, w/h, 0.1, size*100);
+  cam.up.set(0, 0, 1);
+  cam.position.set(0, -size*1.8, size*0.9);
+  cam.lookAt(0, 0, 0);
+  sc.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.9);
+  dl.position.set(1, -1.5, 2);
+  sc.add(dl);
+
+  const grp = new THREE.Group();
+  sc.add(grp);
+  G.forEach((g, i) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(g.T, 3));
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+      color: CORES[i%CORES.length], metalness: 0.2, roughness: 0.45, side: THREE.DoubleSide, flatShading: true
+    }));
+    m.position.set(-cx, -cy, -cz);
+    grp.add(m);
+  });
+
+  let drag = false, lx = 0, ly = 0;
+  el.onpointerdown = ev => { drag = true; lx = ev.clientX; ly = ev.clientY; el.setPointerCapture(ev.pointerId); };
+  el.onpointermove = ev => {
+    if (!drag) return;
+    grp.rotation.z += (ev.clientX - lx) * 0.01;
+    grp.rotation.x = Math.max(-1.5, Math.min(1.5, grp.rotation.x + (ev.clientY - ly) * 0.01));
+    lx = ev.clientX; ly = ev.clientY;
+  };
+  el.onpointerup = el.onpointercancel = () => { drag = false; };
+
+  const st = { alive: true, r };
+  VIEWS[divId] = st;
+  const loop = () => { if (!st.alive) return; requestAnimationFrame(loop); r.render(sc, cam); };
+  loop();
+}
+
+function v3Gomos(){
+  const p = gomoParams();
+  if (!p) { $('gOut').innerHTML = err('Corrija as medidas antes de ver em 3D.'); return; }
+  mount3d('gView', model3dCot(p.D, p.al, p.k, 24, p.L));
+}
+
+// ===== Realidade aumentada (WebXR) =====
+let RA_SESSION = null, RA_ST = null;
+
+// Escolhe um espaço de referência aceito pelo aparelho
+async function testarEspacos(session){
+  const ok = {};
+  for (const tp of ['viewer', 'local', 'local-floor', 'unbounded']){
+    try { await session.requestReferenceSpace(tp); ok[tp] = true; } catch (e) { ok[tp] = false; }
+  }
+  if (!ok.viewer || !(ok.local || ok['local-floor'])) throw new Error('espaços de referência não suportados');
+  return ok.local ? 'local' : 'local-floor';
+}
+
+// Centraliza a peça em x/z e apoia a base no chão (y = 0)
+function raLayout(){
+  const obj = RA_ST.obj, m = RA_ST.inner;
+  const pos = obj.position.clone(), rotY = obj.rotation.y;
+  obj.position.set(0, 0, 0); obj.rotation.y = 0;
+  m.position.set(0, 0, 0);
+  obj.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(m);
+  const c = b.getCenter(new THREE.Vector3());
+  m.position.set(-c.x / 0.001, -b.min.y / 0.001, -c.z / 0.001);
+  obj.position.copy(pos); obj.rotation.y = rotY;
+}
+
+function raAcao(a){
+  if (!RA_ST) return;
+  if (a === 'girar'){ RA_ST.yaw += Math.PI/4; RA_ST.obj.rotation.y = RA_ST.yaw; }
+  if (a === 'inverter'){
+    RA_ST.flip = !RA_ST.flip;
+    RA_ST.inner.rotation.y = RA_ST.flip ? Math.PI : 0;   // espelha o lado da curva (pivô já está em pé)
+    raLayout();
+  }
+  if (a === 'mover'){ RA_ST.mover = true; }
+  if (a === 'fechar' && RA_SESSION){ RA_SESSION.end(); }
+}
+
+async function verEmRA(){
+  const msg = h => { $('gAR').innerHTML = h; };
+  if (!navigator.xr || !(await navigator.xr.isSessionSupported('immersive-ar').catch(() => false))){
+    msg(err('Realidade aumentada não disponível neste aparelho ou navegador. Use Android com Chrome e ARCore.'));
+    return;
+  }
+  if (typeof THREE === 'undefined'){ msg(err('Biblioteca 3D indisponível.')); return; }
+  const p = gomoParams();
+  if (!p){ msg(err('Corrija as medidas da curva antes de abrir a RA.')); return; }
+
+  // Modelo aberto: só a lateral (sem tampas de ponta)
+  const G = model3dCot(p.D, p.al, p.k, 48, p.L).filter(g => g.nome === 'Peças (lateral)');
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(G.flatMap(g => g.T), 3));
+  geo.computeVertexNormals();
+
+  const r = new THREE.WebGLRenderer({antialias: true, alpha: true});
+  r.xr.enabled = true;
+  r.shadowMap.enabled = true;
+  r.shadowMap.type = THREE.PCFSoftShadowMap;
+  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  r.setSize(window.innerWidth, window.innerHeight);
+  r.domElement.style.position = 'fixed';
+  r.domElement.style.left = '0'; r.domElement.style.top = '0';
+  document.body.appendChild(r.domElement);
+
+  const sc = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera();
+  sc.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.6);
+  dl.position.set(1, 2, 1);
+  dl.castShadow = true;
+  dl.shadow.mapSize.set(1024, 1024);
+  Object.assign(dl.shadow.camera, {left: -0.8, right: 0.8, top: 0.8, bottom: -0.8, near: 0.1, far: 10});
+  dl.shadow.camera.updateProjectionMatrix();
+  sc.add(dl);
+
+  const obj = new THREE.Group();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    color: 0xc4cad1, metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide, flatShading: true
+  }));
+  mesh.castShadow = true;
+  const pivot = new THREE.Group();
+  pivot.rotation.x = -Math.PI/2;   // Z do modelo (eixo da curva) vira Y da RA: peça em pé
+  pivot.add(mesh);
+  obj.add(pivot);
+  const chao = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI/2), new THREE.ShadowMaterial({opacity: 0.4}));
+  chao.receiveShadow = true;
+  obj.add(chao);
+  obj.scale.set(0.001, 0.001, 0.001);   // mm para metros: tamanho real
+  obj.visible = false;
+  RA_ST = {obj, inner: pivot, yaw: 0, flip: false, mover: false};
+  raLayout();
+  sc.add(obj);
+
+  const ret = new THREE.Mesh(
+    new THREE.RingGeometry(0.06, 0.08, 40).rotateX(-Math.PI/2),
+    new THREE.MeshBasicMaterial({color: 0x00ff66})
+  );
+  ret.matrixAutoUpdate = false;
+  ret.visible = false;
+  sc.add(ret);
+
+  let session;
+  try {
+    session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: {root: $('arOverlay')}
+    });
+  } catch (e) {
+    r.domElement.remove();
+    msg(err('Não foi possível iniciar a RA: ' + e.message));
+    return;
+  }
+  RA_SESSION = session;
+  let refTipo;
+  try { refTipo = await testarEspacos(session); }
+  catch (e) { session.end(); msg(err('Este aparelho não aceita os espaços necessários para a RA.')); return; }
+  r.xr.setReferenceSpaceType(refTipo);
+  await r.xr.setSession(session);
+  const ctrl = $('arCtrl');
+  if (session.domOverlayState){ ctrl.style.display = 'flex'; }
+  else { msg(err('Botões na tela não disponíveis neste aparelho. Toque na tela para mover a peça.')); }
+
+  const viewer = await session.requestReferenceSpace('viewer');
+  const hitSource = await session.requestHitTestSource({space: viewer});
+  const refSpace = await r.xr.getReferenceSpace();
+  let lastHit = null;
+
+  session.addEventListener('select', () => {
+    if (!lastHit) return;
+    obj.position.setFromMatrixPosition(lastHit);
+    obj.visible = true;
+    RA_ST.mover = false;
+  });
+
+  r.setAnimationLoop((time, frame) => {
+    if (frame && hitSource){
+      const res = frame.getHitTestResults(hitSource);
+      if (res.length){
+        const pose = res[0].getPose(refSpace);
+        if (pose){
+          lastHit = new THREE.Matrix4().fromArray(pose.transform.matrix);
+          ret.matrix.copy(lastHit);
+          ret.visible = true;
+          if (!obj.visible || RA_ST.mover){ obj.position.setFromMatrixPosition(lastHit); obj.visible = true; }
+        }
+      }
+    }
+    r.render(sc, cam);
+  });
+
+  session.addEventListener('end', () => {
+    r.setAnimationLoop(null);
+    r.domElement.remove();
+    ctrl.style.display = 'none';
+    RA_SESSION = null;
+    RA_ST = null;
+    msg('');
+  });
+  msg('');
+}
+</script>
+<script>
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+</script>
+</body>
+</html>
