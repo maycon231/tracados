@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Transições · Traçados de Caldeiraria</title>
+<style>
+:root{--bg:#f5f5f2;--fg:#1d1d1b;--card:#fff;--line:#c9c9c2;--acc:#b5540a;--mut:#666}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#171716;--fg:#ececea;--card:#22221f;--line:#4a4a45;--acc:#e0813a;--mut:#9a9a92}}
+:root[data-theme="dark"]{--bg:#171716;--fg:#ececea;--card:#22221f;--line:#4a4a45;--acc:#e0813a;--mut:#9a9a92}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif}
+header{padding:16px;font-weight:700;font-size:18px;border-bottom:1px solid var(--line)}
+main{padding:0 16px 24px;max-width:720px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px}
+label{display:block;font-size:13px;color:var(--mut);margin-top:10px}
+input,select{width:100%;padding:10px;margin-top:4px;font-size:16px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.go{width:100%;margin-top:14px;padding:12px;font-size:16px;border:0;border-radius:8px;background:var(--acc);color:#fff;font-weight:600}
+.res{margin-top:14px;font-size:15px;line-height:1.6}
+.res b{color:var(--acc)}
+.res p{margin:6px 0}
+.viz{margin-top:12px;background:var(--bg);border-radius:8px;padding:6px}
+.viz svg{width:100%;height:auto;display:block}
+.viz line{stroke:var(--acc);stroke-width:1.2}
+.err{color:#c0392b;font-size:14px}
+.note{font-size:12px;color:var(--mut);margin-top:10px}
+h3{margin:0;font-size:16px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#b5540a">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+<body>
+<header><a href="index.html" style="color:var(--acc);text-decoration:none">&larr; Menu</a> &nbsp; Transições · quadrado para redondo</header>
+<main>
+<div class="card">
+  <h3>Retângulo (base) para redondo (topo)</h3>
+  <div class="row">
+    <label>Largura W (mm)<input id="tW" type="number" value="300"></label>
+    <label>Altura H (mm)<input id="tH" type="number" value="200"></label>
+  </div>
+  <label>O retângulo é<select id="tTipoR"><option value="ext">externo</option><option value="int">interno</option><option value="med">linha média</option></select></label>
+  <div class="row">
+    <label>Diâmetro D (mm)<input id="tD" type="number" value="250"></label>
+    <label>Altura de transição h (mm)<input id="tZ" type="number" value="150"></label>
+  </div>
+  <label>O diâmetro é<select id="tTipoC"><option value="ext">externo</option><option value="int">interno</option><option value="med">linha média</option></select></label>
+  <label>Espessura t (mm)<input id="tT" type="number" value="2"></label>
+  <div class="row">
+    <label>Deslocamento do centro X (mm, 0 = concêntrico)<input id="tX" type="number" value="0"></label>
+    <label>Deslocamento do centro Y (mm)<input id="tY" type="number" value="0"></label>
+  </div>
+  <label>Divisões (pontos por base; 24 a 48 recomendado)<input id="tN" type="number" value="24"></label>
+  <button class="go" onclick="calcTr()">Calcular planificação</button>
+  <div id="tOut" class="res"></div>
+  <button class="go" onclick="ver3d()">Ver objeto em 3D</button>
+  <div id="tView" class="viz" style="height:auto;padding:0;overflow:hidden"></div>
+</div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const v = id => parseFloat($(id).value);
+const err = msg => `<span class="err">${msg}</span>`;
+const CORES = ['#b5540a', '#2a7fbf', '#3a9b5c', '#c94f7c', '#8a6fd1', '#d9a31f'];
+const tri = (T, a, b, c) => { T.push(a[0],a[1],a[2], b[0],b[1],b[2], c[0],c[1],c[2]); };
+const grupos = nomes => nomes.map(nome => ({ nome, T: [] }));
+
+// Converte a medida informada para a linha neutra (mesma regra do PLANO.md)
+function dmed(D, t, tipo){
+  if (tipo === 'int') return D + t;
+  if (tipo === 'med') return D;
+  return D - t;
+}
+
+// Ajusta pontos a uma área de desenho, invertendo o eixo y
+function fit(xs, ys, W, H){
+  const minx = Math.min(...xs), maxx = Math.max(...xs);
+  const miny = Math.min(...ys), maxy = Math.max(...ys);
+  const s = Math.min((W - 40) / ((maxx - minx) || 1), (H - 40) / ((maxy - miny) || 1));
+  return { f: (x, y) => [20 + (x - minx) * s, H - 20 - (y - miny) * s] };
+}
+
+// Ponto na borda do retângulo (centrado na origem), contado a partir do canto inferior esquerdo
+function rectAt(t, W, H){
+  const hw = W / 2, hh = H / 2;
+  const segs = [
+    [[-hw, -hh], [hw, -hh], W], [[hw, -hh], [hw, hh], H],
+    [[hw, hh], [-hw, hh], W], [[-hw, hh], [-hw, -hh], H]
+  ];
+  let s = t;
+  for (const [A, B, L] of segs){
+    if (s <= L) { const f = s / L; return [A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f]; }
+    s -= L;
+  }
+  return [-hw, -hh];
+}
+
+// Lê as medidas e valida; devolve null se algo estiver errado
+function medidas(){
+  const t = v('tT'), tipoR = $('tTipoR').value, tipoC = $('tTipoC').value;
+  const W = dmed(v('tW'), t, tipoR), H = dmed(v('tH'), t, tipoR), D = dmed(v('tD'), t, tipoC);
+  const h = v('tZ'), n = Math.round(v('tN'));
+  const DX = v('tX') || 0, DY = v('tY') || 0;
+  if (!(W > 0 && H > 0 && D > 0 && h > 0 && n >= 4)) return null;
+  return { W, H, D, h, n, DX, DY };
+}
+
+// Pontos da base (P, retângulo em z=0) e do topo (Q, círculo em z=h), na mesma ordem
+function pontos(W, H, D, h, n, DX, DY){
+  const per = 2 * (W + H), P = [], Q = [];
+  for (let i = 0; i < n; i++){
+    P.push([...rectAt(per * i / n, W, H), 0]);
+    const a = 2 * Math.PI * i / n;
+    Q.push([D / 2 * Math.cos(a) + DX, D / 2 * Math.sin(a) + DY, h]);
+  }
+  return { P, Q };
+}
+
+// Desenvolvimento de faixa de triângulos (triangulação)
+function stripDev(V){
+  const M = V.length, dist = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
+  const X = [0, dist(V[0], V[1])], Y = [0, 0];
+  for (let k = 2; k < M; k++){
+    const A = k - 2, B = k - 1;
+    const da = dist(V[A], V[k]), db = dist(V[B], V[k]);
+    const dx = X[B] - X[A], dy = Y[B] - Y[A], d = Math.hypot(dx, dy) || 1e-9;
+    const x = (da*da - db*db + d*d) / (2*d);
+    const hh = Math.sqrt(Math.max(0, da*da - x*x));
+    const ux = dx / d, uy = dy / d;
+    let side = 1;
+    if (k >= 3){
+      const cross = dx * (Y[k-3] - Y[A]) - dy * (X[k-3] - X[A]);
+      side = cross > 0 ? -1 : 1;   // fica do lado oposto ao triângulo anterior
+    }
+    X.push(X[A] + ux*x - uy*hh*side);
+    Y.push(Y[A] + uy*x + ux*hh*side);
+  }
+  return { X, Y };
+}
+
+// Planificação e erro de fechamento
+function calcTr(){
+  const m = medidas();
+  if (!m){ $('tOut').innerHTML = err('Informe todas as medidas > 0 e divisões ≥ 4.'); return; }
+  const { W, H, D, h, n, DX, DY } = m;
+  const { P, Q } = pontos(W, H, D, h, n, DX, DY);
+  const V = [];
+  for (let i = 0; i < n; i++) V.push(P[i], Q[i]);
+  V.push(P[0]);
+  const M = V.length;
+  const { X, Y } = stripDev(V);
+  const closure = Math.hypot(X[M-1] - X[0], Y[M-1] - Y[0]);
+  const g = fit(X, Y, 560, 360);
+  let lines = '';
+  for (let k = 0; k < M; k++){
+    for (const j of [k + 1, k + 2]){
+      if (j < M){
+        const [x1, y1] = g.f(X[k], Y[k]), [x2, y2] = g.f(X[j], Y[j]);
+        lines += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+      }
+    }
+  }
+  const w = Math.max(...X) - Math.min(...X), hgt = Math.max(...Y) - Math.min(...Y);
+  const e = Math.hypot(DX, DY);
+  $('tOut').innerHTML = `
+    <p>Linha neutra: retângulo <b>${W.toFixed(1)} × ${H.toFixed(1)} mm</b> · redondo <b>D = ${D.toFixed(1)} mm</b></p>
+    <p>Deslocamento do centro do redondo: <b>${e.toFixed(1)} mm</b>${e === 0 ? ' (concêntrico)' : ''}</p>
+    <p>Altura de transição: <b>${h.toFixed(1)} mm</b></p>
+    <p>Dimensões aproximadas da planificação: <b>${w.toFixed(1)} × ${hgt.toFixed(1)} mm</b></p>
+    <p>Erro de fechamento: <b>${closure.toFixed(1)} mm</b></p>
+    <div class="viz"><svg viewBox="0 0 560 360">${lines}</svg></div>
+    <p class="note">Triangulação aproximada: cada aresta do retângulo é dividida igualmente pelo perímetro, e cada ponto do redondo fica no mesmo ângulo de ordem. Quanto menor o erro de fechamento, melhor; se estiver alto, aumente as divisões. Valide com gabarito antes de cortar a chapa.</p>`;
+}
+
+// ===== Visualização 3D =====
+function mount3d(divId, G){
+  const div = $(divId);
+  if (typeof THREE === 'undefined'){ div.innerHTML = err('Biblioteca 3D indisponível neste ambiente.'); return; }
+  if (window.VIEW3 && window.VIEW3.alive){ window.VIEW3.alive = false; window.VIEW3.r.forceContextLoss(); }
+  G = G.filter(g => g.T.length);
+  let mnx=Infinity,mny=Infinity,mnz=Infinity,mxx=-Infinity,mxy=-Infinity,mxz=-Infinity;
+  for (const g of G){
+    for (let i = 0; i < g.T.length; i += 3){
+      const x = g.T[i], y = g.T[i+1], z = g.T[i+2];
+      mnx=Math.min(mnx,x); mxx=Math.max(mxx,x);
+      mny=Math.min(mny,y); mxy=Math.max(mxy,y);
+      mnz=Math.min(mnz,z); mxz=Math.max(mxz,z);
+    }
+  }
+  const cx=(mnx+mxx)/2, cy=(mny+mxy)/2, cz=(mnz+mxz)/2;
+  const size = Math.max(mxx-mnx, mxy-mny, mxz-mnz) || 1;
+  const w = div.clientWidth || 340, h = 300;
+  const r = new THREE.WebGLRenderer({antialias: true, alpha: true});
+  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  r.setSize(w, h);
+  const el = r.domElement;
+  el.style.width = '100%'; el.style.height = h + 'px'; el.style.display = 'block'; el.style.touchAction = 'none';
+  div.innerHTML = '';
+  div.style.height = 'auto';
+  div.appendChild(el);
+
+  const leg = document.createElement('div');
+  leg.style.cssText = 'padding:8px 10px;font-size:13px;line-height:1.9;color:var(--fg)';
+  leg.innerHTML = G.map((g, i) => `<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${CORES[i%CORES.length]};margin-right:6px;vertical-align:middle"></span>${g.nome}`).join('<br>');
+  div.appendChild(leg);
+
+  const sc = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(40, w/h, 0.1, size*100);
+  cam.up.set(0, 0, 1);
+  cam.position.set(0, -size*1.8, size*0.9);
+  cam.lookAt(0, 0, 0);
+  sc.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.9);
+  dl.position.set(1, -1.5, 2);
+  sc.add(dl);
+
+  const grp = new THREE.Group();
+  sc.add(grp);
+  G.forEach((g, i) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(g.T, 3));
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+      color: CORES[i%CORES.length], metalness: 0.2, roughness: 0.45, side: THREE.DoubleSide, flatShading: true
+    }));
+    m.position.set(-cx, -cy, -cz);
+    grp.add(m);
+  });
+
+  let drag = false, lx = 0, ly = 0;
+  el.onpointerdown = ev => { drag = true; lx = ev.clientX; ly = ev.clientY; el.setPointerCapture(ev.pointerId); };
+  el.onpointermove = ev => {
+    if (!drag) return;
+    grp.rotation.z += (ev.clientX - lx) * 0.01;
+    grp.rotation.x = Math.max(-1.5, Math.min(1.5, grp.rotation.x + (ev.clientY - ly) * 0.01));
+    lx = ev.clientX; ly = ev.clientY;
+  };
+  el.onpointerup = el.onpointercancel = () => { drag = false; };
+
+  const st = { alive: true, r };
+  window.VIEW3 = st;
+  const loop = () => { if (!st.alive) return; requestAnimationFrame(loop); r.render(sc, cam); };
+  loop();
+}
+
+// Modelo 3D: lateral em faixas de triângulos, base retangular (z=0) e topo redondo (z=h)
+function model3dTra(W, H, D, h, n, DX, DY){
+  const G = grupos(['Lateral (superfície)', 'Base retangular', 'Topo redondo']);
+  const [L, B1, B2] = G.map(g => g.T);
+  const { P, Q } = pontos(W, H, D, h, n, DX, DY);
+  for (let i = 0; i < n; i++){
+    const j = (i + 1) % n;
+    tri(L, P[i], Q[i], P[j]);
+    tri(L, P[j], Q[i], Q[j]);
+    tri(B1, [0, 0, 0], P[j], P[i]);
+    tri(B2, [DX, DY, h], Q[i], Q[j]);   // leque a partir do centro do redondo (não da origem)
+  }
+  return G;
+}
+
+function ver3d(){
+  const m = medidas();
+  if (!m){ $('tView').innerHTML = err('Corrija as medidas antes de ver em 3D.'); return; }
+  mount3d('tView', model3dTra(m.W, m.H, m.D, m.h, Math.max(8, m.n), m.DX, m.DY));
+}
+</script>
+<script>
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+</script>
+</body>
+</html>
